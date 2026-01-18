@@ -1,4 +1,4 @@
-app-title = Cosmic Applet Color Picker
+app-title = Colour Picker
 about = About
 view = View
 welcome = Welcome to COSMIC! ✨
