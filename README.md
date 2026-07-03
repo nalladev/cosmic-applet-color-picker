@@ -6,8 +6,6 @@ A colour picker applet for the COSMIC™ desktop. Click the eyedropper icon in t
 
 ![Screenshot](https://github.com/nalladev/cosmic-applet-color-picker/raw/main/resources/screenshot.png)
 
-*Coming soon — a proper screenshot of the applet in action.*
-
 ## Installation
 
 ### From source
