@@ -1,4 +1,4 @@
-app-title = Colour Picker
+app-title = Eyedropper
 about = About
 view = View
 welcome = Welcome to COSMIC! ✨

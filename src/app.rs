@@ -286,7 +286,7 @@ impl cosmic::Application for AppModel {
     type Flags = ();
     type Message = Message;
 
-    const APP_ID: &'static str = "com.github.nalladev.CosmicAppletColorPicker";
+    const APP_ID: &'static str = "io.github.nalladev.CosmicExtAppletEyedropper";
 
     fn core(&self) -> &cosmic::Core {
         &self.core

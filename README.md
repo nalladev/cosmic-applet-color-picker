@@ -1,27 +1,27 @@
-# Colour Picker
+# Eyedropper
 
-A colour picker applet for the COSMIC™ desktop. Click the eyedropper icon in the panel, select a colour from anywhere on screen, and copy it as hex, RGB, or HSL.
+An eyedropper applet for the COSMIC™ desktop. Click the eyedropper icon in the panel, select a colour from anywhere on screen, and copy it as hex, RGB, or HSL.
 
 ## Screenshot
 
-![Screenshot](https://github.com/nalladev/cosmic-applet-color-picker/raw/main/resources/screenshot.png)
+![Screenshot](https://github.com/nalladev/cosmic-ext-applet-eyedropper/raw/main/resources/screenshot.png)
 
 ## Installation
 
 ### From a release
 
-Grab the `.deb`, `.rpm`, or tarball for your architecture from the [releases page](https://github.com/nalladev/cosmic-applet-color-picker/releases/latest).
+Grab the `.deb`, `.rpm`, or tarball for your architecture from the [releases page](https://github.com/nalladev/cosmic-ext-applet-eyedropper/releases/latest).
 
 ```sh
 # Debian/Ubuntu/Pop!_OS
-sudo apt install --reinstall ./cosmic-applet-color-picker_*.deb
+sudo apt install --reinstall ./cosmic-ext-applet-eyedropper_*.deb
 
 # Fedora
-sudo dnf install ./cosmic-applet-color-picker-*.rpm
+sudo dnf install ./cosmic-ext-applet-eyedropper-*.rpm
 
 # Tarball (installs to ~/.local, no root required)
-tar -xzf cosmic-applet-color-picker-*.tar.gz
-cd cosmic-applet-color-picker
+tar -xzf cosmic-ext-applet-eyedropper-*.tar.gz
+cd cosmic-ext-applet-eyedropper
 ./install.sh
 ```
 
@@ -30,14 +30,14 @@ Then restart the panel with `pkill cosmic-panel` and add the applet.
 ### From source
 
 ```sh
-git clone https://github.com/nalladev/cosmic-applet-color-picker
-cd cosmic-applet-color-picker
+git clone https://github.com/nalladev/cosmic-ext-applet-eyedropper
+cd cosmic-ext-applet-eyedropper
 cargo build --release
 sudo just install
 pkill cosmic-panel
 ```
 
-Then right-click the panel → **Add Applet** → find **Colour Picker**.
+Then right-click the panel → **Add Applet** → find **Eyedropper**.
 
 ### Dependencies
 

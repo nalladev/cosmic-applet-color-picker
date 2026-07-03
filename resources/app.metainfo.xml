@@ -1,17 +1,17 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <component type="desktop-application">
-  <id>com.github.nalladev.CosmicAppletColorPicker</id>
+  <id>io.github.nalladev.CosmicExtAppletEyedropper</id>
   <metadata_license>CC0-1.0</metadata_license>
   <project_license>MPL-2.0</project_license>
-  <name>Colour Picker</name>
-  <summary>Colour picker applet for cosmic desktop</summary>
-  <icon type="stock">com.github.nalladev.CosmicAppletColorPicker</icon>
-  <url type="vcs-browser">https://github.com/nalladev/cosmic-applet-color-picker</url>
-  <launchable type="desktop-id">com.github.nalladev.CosmicAppletColorPicker.desktop</launchable>
+  <name>Eyedropper</name>
+  <summary>Eyedropper applet for cosmic desktop</summary>
+  <icon type="stock">io.github.nalladev.CosmicExtAppletEyedropper</icon>
+  <url type="vcs-browser">https://github.com/nalladev/cosmic-ext-applet-eyedropper</url>
+  <launchable type="desktop-id">io.github.nalladev.CosmicExtAppletEyedropper.desktop</launchable>
   <provides>
-    <id>com.github.nalladev.CosmicAppletColorPicker</id>
+    <id>io.github.nalladev.CosmicExtAppletEyedropper</id>
     <binaries>
-      <binary>cosmic-applet-color-picker</binary>
+      <binary>cosmic-ext-applet-eyedropper</binary>
     </binaries>
   </provides>
   <requires>

@@ -972,22 +972,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "cosmic-applet-color-picker"
-version = "0.1.1"
-dependencies = [
- "anyhow",
- "futures-util",
- "i18n-embed",
- "i18n-embed-fl",
- "image",
- "libcosmic",
- "memmap2 0.9.11",
- "rust-embed",
- "rustix 1.1.4",
- "tokio",
-]
-
-[[package]]
 name = "cosmic-client-toolkit"
 version = "0.2.0"
 source = "git+https://github.com/pop-os/cosmic-protocols?rev=c253ec1#c253ec1d6804afbcdf250f5cc37ae1194bba7bd2"
@@ -1054,6 +1038,22 @@ source = "git+https://github.com/pop-os/libcosmic#ee5d965983957271cf759fd76e3e4e
 dependencies = [
  "quote",
  "syn",
+]
+
+[[package]]
+name = "cosmic-ext-applet-eyedropper"
+version = "0.1.1"
+dependencies = [
+ "anyhow",
+ "futures-util",
+ "i18n-embed",
+ "i18n-embed-fl",
+ "image",
+ "libcosmic",
+ "memmap2 0.9.11",
+ "rust-embed",
+ "rustix 1.1.4",
+ "tokio",
 ]
 
 [[package]]

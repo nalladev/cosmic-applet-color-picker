@@ -1,5 +1,5 @@
-name := 'cosmic-applet-color-picker'
-appid := 'com.github.nalladev.CosmicAppletColorPicker'
+name := 'cosmic-ext-applet-eyedropper'
+appid := 'io.github.nalladev.CosmicExtAppletEyedropper'
 
 rootdir := ''
 prefix := '/usr'

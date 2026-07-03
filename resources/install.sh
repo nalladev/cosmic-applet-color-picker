@@ -9,7 +9,7 @@ mkdir -p ~/.local/bin \
     "${XDG_DATA_HOME:-~/.local/share}/appdata" \
     "${XDG_DATA_HOME:-~/.local/share}/icons/hicolor/scalable/apps"
 
-cp ./cosmic-applet-color-picker ~/.local/bin/
+cp ./cosmic-ext-applet-eyedropper ~/.local/bin/
 cp ./*.desktop "${XDG_DATA_HOME:-~/.local/share}/applications/"
 cp ./*.metainfo.xml "${XDG_DATA_HOME:-~/.local/share}/appdata/"
 cp ./*.svg "${XDG_DATA_HOME:-~/.local/share}/icons/hicolor/scalable/apps/"

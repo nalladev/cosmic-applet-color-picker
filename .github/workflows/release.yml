@@ -52,8 +52,8 @@ jobs:
           just build-deb
           just build-rpm
 
-          NAME="cosmic-applet-color-picker"
-          APPID="com.github.nalladev.CosmicAppletColorPicker"
+          NAME="cosmic-ext-applet-eyedropper"
+          APPID="io.github.nalladev.CosmicExtAppletEyedropper"
           ARCH="$(uname -m)"
 
           mkdir "./$NAME"
