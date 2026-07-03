@@ -2,6 +2,8 @@
 
 use std::time::{Duration, Instant};
 
+use ::image::EncodableLayout;
+
 use crate::config::Config;
 use crate::fl;
 use crate::picker::{self, CapturedOutput, Color};
@@ -518,17 +520,73 @@ impl cosmic::Application for AppModel {
 
                 eprintln!("[picker]   tracked outputs: {}", self.outputs.len());
 
+                // Close the popup and defer capture until the compositor
+                // confirms it is gone (PopupClosed).  Overlays are NOT
+                // created yet — they are created after capture completes
+                // so that the captured image never includes our own UI.
+                if let Some(popup_id) = self.popup.take() {
+                    self.pending_popup_close = Some(popup_id);
+                    eprintln!("[picker]   popup {popup_id:?} removed, pending_popup_close set. Capture deferred.");
+                    return destroy_popup(popup_id);
+                } else {
+                    eprintln!("[picker]   popup was already closed — starting capture immediately.");
+                    return Task::perform(
+                        picker::capture_all_outputs(),
+                        |result| {
+                            let msg = match result {
+                                Ok(outputs) => Message::CaptureCompleted(outputs),
+                                Err(e) => Message::CaptureFailed(e.to_string()),
+                            };
+                            cosmic::Action::App(msg)
+                        },
+                    );
+                }
+            }
+
+            // ── Capture completed successfully ──────────────────────────
+            Message::CaptureCompleted(captures) => {
+                let t_capture = std::time::Instant::now();
+                eprintln!("[picker] CaptureCompleted — {} outputs", captures.len());
+                for cap in &captures {
+                    eprintln!("[picker]   output: {} {}x{} @({},{}) logical {}x{} rgba={}b",
+                        cap.name, cap.width, cap.height,
+                        cap.pos_x, cap.pos_y,
+                        cap.logical_width, cap.logical_height,
+                        cap.rgba.as_bytes().len(),
+                    );
+                }
+
+                if captures.is_empty() {
+                    eprintln!("[picker]   captures is empty — error + cancel");
+                    self.error = Some("No outputs captured".into());
+                    return self.cancel_picker();
+                }
+
+                // If picker mode was cancelled while capture was running,
+                // discard the result.
+                if self.picker.is_some() {
+                    eprintln!("[picker]   WARNING: picker already exists — discard duplicate capture");
+                    return Task::none();
+                }
+
+                eprintln!("[picker]   collecting pre-built image handles...");
+                let mut image_handles = Vec::with_capacity(captures.len());
+                for (i, cap) in captures.iter().enumerate() {
+                    image_handles.push(cap.image_handle.clone());
+                    eprintln!("[picker]   image_handle[{i}]: {}x{}", cap.width, cap.height);
+                }
+
+                eprintln!("[picker]   creating overlay windows on {} outputs...", self.outputs.len());
+
+                // 2. Create overlay windows (captured image is ready —
+                //    first frame will show the frozen desktop).
                 let mut tasks: Vec<Task<cosmic::Action<Self::Message>>> = Vec::new();
                 let mut overlay_ids = Vec::new();
 
-                // 1. Create overlay windows on every tracked output NOW,
-                //    before capture starts.  This eliminates the grey
-                //    intermediate frame because the overlays are already
-                //    visible (tinted) when capture completes.
                 for (i, output_state) in self.outputs.iter().enumerate() {
                     let overlay_id = output_state.id;
                     overlay_ids.push(overlay_id);
-                    eprintln!("[picker]   creating overlay[{i}] id={overlay_id:?} on output '{}'",
+                    eprintln!("[picker]   creating overlay[{i}] id={overlay_id:?} on output '{}",
                         output_state.name);
                     tasks.push(get_layer_surface(SctkLayerSurfaceSettings {
                         id: overlay_id,
@@ -544,65 +602,18 @@ impl cosmic::Application for AppModel {
                     }));
                 }
 
-                // 2. Create the controller in Capturing state with the
-                //    pre-created overlay IDs (no captures yet).
-                self.picker = Some(PickerController::new_capturing(overlay_ids));
+                // 3. Create the controller in Picking state.
+                let n_overlays = overlay_ids.len();
+                self.picker = Some(PickerController::new_with_captures(
+                    captures, image_handles, overlay_ids,
+                ));
+                eprintln!("[picker]   picker created in Picking state with {} overlays", n_overlays);
+                eprintln!(
+                    "[picker]   CaptureCompleted handler took {:?}",
+                    t_capture.elapsed(),
+                );
 
-                // 3. Close the popup and defer capture until the
-                //    compositor confirms it is gone (PopupClosed).
-                if let Some(popup_id) = self.popup.take() {
-                    self.pending_popup_close = Some(popup_id);
-                    eprintln!("[picker]   popup {popup_id:?} removed, pending_popup_close set. Capture deferred.");
-                    tasks.push(destroy_popup(popup_id));
-                } else {
-                    eprintln!("[picker]   popup was already closed — starting capture immediately.");
-                    // Popup was already gone — start capture immediately.
-                    tasks.push(Task::perform(
-                        picker::capture_all_outputs(),
-                        |result| {
-                            let msg = match result {
-                                Ok(outputs) => Message::CaptureCompleted(outputs),
-                                Err(e) => Message::CaptureFailed(e.to_string()),
-                            };
-                            cosmic::Action::App(msg)
-                        },
-                    ));
-                }
-
-                eprintln!("[picker]   returning batch of {} tasks", tasks.len());
                 return Task::batch(tasks);
-            }
-
-            // ── Capture completed successfully ──────────────────────────
-            Message::CaptureCompleted(captures) => {
-                eprintln!("[picker] CaptureCompleted — {} outputs", captures.len());
-                for cap in &captures {
-                    eprintln!("[picker]   output: {} {}x{} @({},{}) logical {}x{}",
-                        cap.name, cap.width, cap.height,
-                        cap.pos_x, cap.pos_y,
-                        cap.logical_width, cap.logical_height,
-                    );
-                }
-
-                if captures.is_empty() {
-                    eprintln!("[picker]   captures is empty — error + cancel");
-                    self.error = Some("No outputs captured".into());
-                    // Cancel picker mode if it was entered.
-                    return self.cancel_picker();
-                }
-
-                if let Some(controller) = self.picker.as_mut() {
-                    eprintln!("[picker]   calling controller.set_captures()...");
-                    eprintln!("[picker]   pre-call state={:?}", controller.state);
-                    controller.set_captures(captures);
-                    eprintln!("[picker]   post-call state={:?}", controller.state);
-                    eprintln!("[picker]   captures={} image_handles={}",
-                        controller.captures.len(),
-                        controller.image_handles.len(),
-                    );
-                } else {
-                    eprintln!("[picker]   WARNING: CaptureCompleted with no active picker!");
-                }
             }
 
             // ── Capture failed ──────────────────────────────────────────
@@ -787,13 +798,9 @@ impl cosmic::Application for AppModel {
 
             // ── Frame tick (when picker is active) ──────────────────────
             Message::FrameTick => {
-                // Log if stuck in Capturing (diagnostic for deferred capture).
+                // Sanity check: Picking state must have captures.
                 if let Some(p) = self.picker.as_ref() {
-                    if p.state == crate::picker::PickerState::Capturing {
-                        eprintln!("[picker] FrameTick — STILL IN Capturing (pending_close={:?})",
-                            self.pending_popup_close);
-                    }
-                    if p.captures.is_empty() && p.state != crate::picker::PickerState::Capturing {
+                    if p.captures.is_empty() {
                         eprintln!("[picker] FrameTick — state={:?} but captures empty!", p.state);
                     }
                 }
@@ -961,9 +968,7 @@ impl AppModel {
 
     /// Render a picker overlay window.
     ///
-    /// During [`PickerState::Capturing`] a simple tinted overlay is shown
-    /// while the capture completes.  During [`PickerState::Picking`] the
-    /// captured framebuffer is rendered fullscreen with pointer tracking,
+    /// Renders the captured framebuffer fullscreen with pointer tracking,
     /// crosshair, and optional magnifier.
     fn view_picker_overlay(&self, id: Id) -> Element<'_, Message> {
         let Some(picker) = self.picker.as_ref() else {
@@ -972,27 +977,6 @@ impl AppModel {
         };
 
         eprintln!("[picker] view_picker_overlay({id:?}) — state={:?}", picker.state);
-
-        // ── Capturing state: tinted overlay, no interaction yet ────────
-        if picker.state == crate::picker::PickerState::Capturing {
-            eprintln!("[picker]   Capturing branch — tinted overlay, no interaction");
-            return KeyboardWrapper::new(
-                container(horizontal_space())
-                    .width(Length::Fill)
-                    .height(Length::Fill)
-                    .style(|_: &cosmic::Theme| container::Style {
-                        background: Some(
-                            cosmic::iced::Color::BLACK.scale_alpha(0.08).into(),
-                        ),
-                        ..Default::default()
-                    }),
-                |key, _modifiers| match key {
-                    Key::Named(Named::Escape) => Some(Message::PickerCancel),
-                    _ => None,
-                },
-            )
-            .into();
-        }
 
         // ── Picking state: full interaction ────────────────────────────
         eprintln!("[picker]   Picking branch — image + MouseArea + magnifier");
@@ -1141,15 +1125,20 @@ impl AppModel {
         eprintln!("[picker]   picker state was {:?}",
             self.picker.as_ref().map(|p| p.state));
         self.pending_popup_close = None;
-        if let Some(picker) = self.picker.take() {
-            let mut tasks: Vec<Task<cosmic::Action<Message>>> = Vec::new();
 
-            // Destroy all overlay surfaces.
+        let mut tasks: Vec<Task<cosmic::Action<Message>>> = Vec::new();
+
+        // Destroy all overlay surfaces if picker exists.
+        if let Some(picker) = self.picker.take() {
             for id in &picker.overlay_ids {
                 tasks.push(destroy_layer_surface(*id));
             }
+        }
 
-            // Reopen the popup.
+        // Reopen the popup if it's not already open.
+        // Always reopen – even when picker was None (e.g. Escape pressed
+        // before capture completed) – to avoid leaving the user without UI.
+        if self.popup.is_none() {
             let new_id = Id::unique();
             self.popup.replace(new_id);
             let mut popup_settings = self.core.applet.get_popup_settings(
@@ -1165,9 +1154,8 @@ impl AppModel {
                 .min_height(200.0)
                 .max_height(1080.0);
             tasks.push(get_popup(popup_settings));
-
-            return Task::batch(tasks);
         }
-        Task::none()
+
+        if tasks.is_empty() { Task::none() } else { Task::batch(tasks) }
     }
 }

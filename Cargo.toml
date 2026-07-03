@@ -11,7 +11,9 @@ anyhow = "1"
 futures-util = "0.3.31"
 i18n-embed-fl = "0.10"
 image = "0.25"
+memmap2 = "0.9"
 rust-embed = "8.7.2"
+rustix = { version = "1", features = ["fs", "std"] }
 tokio = { version = "1.48.0", features = ["full"] }
 
 [dependencies.i18n-embed]

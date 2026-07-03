@@ -38,8 +38,6 @@ pub struct HoverInfo {
 /// Lifecycle state of the active picking session.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PickerState {
-    /// Overlays are visible but capture has not completed yet.
-    Capturing,
     /// Overlays are active with captured image.  Waiting for user click
     /// or cancel.
     Picking,
@@ -75,60 +73,31 @@ pub struct PickerController {
 }
 
 impl PickerController {
-    /// Create a new controller in the [`PickerState::Capturing`] state
-    /// with the given overlay window IDs.
+    /// Create a new controller already in [`PickerState::Picking`] with
+    /// captures, image handles and overlay IDs all provided at once.
     ///
-    /// The overlay windows must already exist (created before capture).
-    /// Captures and image handles will be populated later via
-    /// [`set_captures`](Self::set_captures).
-    pub fn new_capturing(overlay_ids: Vec<cosmic::iced::window::Id>) -> Self {
-        let n = overlay_ids.len();
-        eprintln!("[picker] PickerController::new_capturing({} overlay IDs)", n);
+    /// This is used when capture has already completed and overlays are
+    /// about to be created — there is no intermediate [`Capturing`] phase.
+    pub fn new_with_captures(
+        captures: Vec<CapturedOutput>,
+        image_handles: Vec<cosmic::widget::image::Handle>,
+        overlay_ids: Vec<cosmic::iced::window::Id>,
+    ) -> Self {
+        let n = captures.len();
+        eprintln!("[picker] PickerController::new_with_captures({} outputs, {} overlays)", n, overlay_ids.len());
         for (i, oid) in overlay_ids.iter().enumerate() {
             eprintln!("[picker]   overlay[{i}] id={oid:?}");
         }
         PickerController {
-            captures: Vec::with_capacity(n),
-            image_handles: Vec::with_capacity(n),
+            captures,
+            image_handles,
             overlay_ids,
             hover: None,
-            state: PickerState::Capturing,
+            state: PickerState::Picking,
         }
     }
 
-    /// Populate captures and image handles after the background capture
-    /// completes, transitioning the controller to [`PickerState::Picking`].
-    pub fn set_captures(&mut self, captures: Vec<CapturedOutput>) {
-        eprintln!("[picker] PickerController::set_captures({} outputs)", captures.len());
-        self.captures = captures;
-        for cap in &self.captures {
-            let mut rgba = cap.data.clone();
-            for pixel in rgba.chunks_exact_mut(4) {
-                pixel[3] = 255;
-            }
-            let buf_len = rgba.len();
-            let handle = cosmic::widget::image::Handle::from_rgba(
-                cap.width, cap.height, rgba,
-            );
-            eprintln!(
-                "[picker]   image_handle #{}: {}x{} ({} bytes)",
-                self.image_handles.len(),
-                cap.width,
-                cap.height,
-                buf_len,
-            );
-            self.image_handles.push(handle);
-        }
-        let old = format!("{:?}", self.state);
-        self.state = PickerState::Picking;
-        eprintln!("[picker]   state: {old} -> Picking");
-        eprintln!(
-            "[picker]   captures={} image_handles={} overlays={}",
-            self.captures.len(),
-            self.image_handles.len(),
-            self.overlay_ids.len(),
-        );
-    }
+
 
     // ------------------------------------------------------------------
     // Helpers

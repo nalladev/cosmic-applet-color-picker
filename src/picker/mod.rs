@@ -5,36 +5,33 @@
 //! This module provides a one-shot screen-capture API and the
 //! [`PickerController`] that manages the interactive picking session.
 
+use ::image::EncodableLayout;
+
 mod controller;
 pub use controller::{PickerController, PickerState};
+pub mod capture;
 mod wayland;
 
 /// Pixel data from a single captured output.
 ///
-/// The `data` vector contains raw 32-bit pixel data with one of the
-/// compositor-advertised SHM formats (`Xbgr8888` or `Abgr8888`).  Both
-/// layouts store the same RGB byte order in memory (little-endian):
-///
-/// | byte 0 | byte 1 | byte 2 | byte 3 |
-/// |--------|--------|--------|--------|
-/// | R      | G      | B      | X / A  |
-///
-/// This matches the `image` crate's `Rgba8` layout (4 bytes per pixel:
-/// R, G, B, A).
-///
-/// ## Coordinate system
+/// Matches `xdg-desktop-portal-cosmic`'s `ScreenshotImage`:
+/// stores both the `RgbaImage` (for pixel sampling and PNG export)
+/// and a pre-built GPU `Handle` (for efficient overlay rendering).
 ///
 /// All position / size fields are in **logical** (compositor) coordinates
 /// unless stated otherwise.  Multiply by the per-axis scale factor
 /// (`width / logical_width`) to obtain buffer-pixel coordinates.
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct CapturedOutput {
     /// Connector name (e.g. `"DP-1"`, `"eDP-1"`).
     pub name: String,
-    /// Raw pixel data, row-major, top-left origin.  Pixel format is
-    /// `Xbgr8888` or `Abgr8888`: byte 0 = R, byte 1 = G, byte 2 = B,
-    /// byte 3 = X or A.
-    pub data: Vec<u8>,
+    /// RGBA pixel data (R, G, B, A bytes, row-major, top-left origin).
+    /// Matches the portal's `ScreenshotImage.rgba`.
+    pub rgba: image::RgbaImage,
+    /// Pre-built GPU texture handle for this output.
+    /// Built on the capture thread to avoid blocking the iced event loop.
+    /// Matches the portal's `ScreenshotImage.handle`.
+    pub image_handle: cosmic::widget::image::Handle,
     /// Pixel width of the captured image.
     pub width: u32,
     /// Pixel height of the captured image.
@@ -52,21 +49,29 @@ pub struct CapturedOutput {
     pub pos_y: i32,
 }
 
+impl std::fmt::Debug for CapturedOutput {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("CapturedOutput")
+            .field("name", &self.name)
+            .field("rgba_size", &self.rgba.as_bytes().len())
+            .field("image_handle", &"Some(Handle)")
+            .field("width", &self.width)
+            .field("height", &self.height)
+            .field("logical_width", &self.logical_width)
+            .field("logical_height", &self.logical_height)
+            .field("pos_x", &self.pos_x)
+            .field("pos_y", &self.pos_y)
+            .finish()
+    }
+}
 impl CapturedOutput {
     /// Sample a pixel at the given buffer-local (x, y) coordinate.
     ///
     /// Returns `None` if the coordinate is out of range.  Returns the pixel
-    /// as `(R, G, B)` — the buffer is stored in `Xbgr8888` / `Abgr8888`
-    /// format where byte 0 = Red, byte 1 = Green, byte 2 = Blue.
+    /// as `(R, G, B)`.
     pub fn pixel_at(&self, x: u32, y: u32) -> Option<(u8, u8, u8)> {
-        if x >= self.width || y >= self.height {
-            return None;
-        }
-        let idx = (y as usize * self.width as usize + x as usize) * 4;
-        if idx + 3 >= self.data.len() {
-            return None;
-        }
-        Some((self.data[idx], self.data[idx + 1], self.data[idx + 2]))
+        let pixel = self.rgba.get_pixel_checked(x, y)?;
+        Some((pixel[0], pixel[1], pixel[2]))
     }
 }
 
@@ -140,37 +145,8 @@ impl From<Color> for (String, String, String) {
     }
 }
 
-/// Capture all connected outputs and return their pixel data.
+/// Capture all connected outputs using the persistent [`CaptureHelper`].
 ///
-/// This spawns a dedicated OS thread with its own Wayland connection, captures
-/// each output via `ext-image-copy-capture-v1`, and returns the results as
-/// an async future.  Call via `Task::perform` from the iced event loop.
-pub async fn capture_all_outputs() -> Result<Vec<CapturedOutput>, anyhow::Error> {
-    let (tx, rx) = tokio::sync::oneshot::channel();
-
-    std::thread::spawn(move || {
-        // Catch panics in the capture thread so we can report the panic
-        // message instead of silently dropping the oneshot sender.
-        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            wayland::capture_all_outputs_sync()
-        }));
-        let _ = tx.send(match result {
-            Ok(Ok(outputs)) => Ok(outputs),
-            Ok(Err(e)) => Err(e),
-            Err(panic) => {
-                let msg = if let Some(s) = panic.downcast_ref::<&str>() {
-                    s.to_string()
-                } else if let Some(s) = panic.downcast_ref::<String>() {
-                    s.clone()
-                } else {
-                    "unknown panic".to_string()
-                };
-                eprintln!("[capture] THREAD PANICKED: {msg}");
-                Err(anyhow::anyhow!("Capture thread panicked: {msg}"))
-            }
-        });
-    });
-
-    rx.await
-        .map_err(|_| anyhow::anyhow!("Capture thread panicked or was cancelled"))?
-}
+/// Delegates to [`wayland::capture_all_outputs`] which spawns a thread and
+/// uses the singleton persistent Wayland connection.
+pub use wayland::capture_all_outputs;
