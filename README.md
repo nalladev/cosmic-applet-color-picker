@@ -8,6 +8,25 @@ A colour picker applet for the COSMIC™ desktop. Click the eyedropper icon in t
 
 ## Installation
 
+### From a release
+
+Grab the `.deb`, `.rpm`, or tarball for your architecture from the [releases page](https://github.com/nalladev/cosmic-applet-color-picker/releases/latest).
+
+```sh
+# Debian/Ubuntu/Pop!_OS
+sudo apt install --reinstall ./cosmic-applet-color-picker_*.deb
+
+# Fedora
+sudo dnf install ./cosmic-applet-color-picker-*.rpm
+
+# Tarball (installs to ~/.local, no root required)
+tar -xzf cosmic-applet-color-picker-*.tar.gz
+cd cosmic-applet-color-picker
+./install.sh
+```
+
+Then restart the panel with `pkill cosmic-panel` and add the applet.
+
 ### From source
 
 ```sh

@@ -58,6 +58,25 @@ install:
 uninstall:
     rm {{bin-dst}} {{desktop-dst}} {{icon-dst}}
 
+# Compiles and packages a .deb with the release profile
+build-deb: build-release
+    command -v cargo-deb || cargo install cargo-deb
+    cargo deb
+
+# Installs the locally-built .deb
+install-deb:
+    apt install --reinstall ./target/debian/*.deb
+
+# Compiles and packages an .rpm with the release profile
+build-rpm: build-release
+    command -v cargo-generate-rpm || cargo install cargo-generate-rpm
+    strip -s {{ cargo-target-dir / 'release' / name }}
+    cargo generate-rpm
+
+# Installs the locally-built .rpm
+install-rpm:
+    dnf install ./target/generate-rpm/*.rpm
+
 # Vendor dependencies locally
 vendor:
     mkdir -p .cargo
