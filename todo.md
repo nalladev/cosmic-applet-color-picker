@@ -2,4 +2,4 @@
 - https://github.com/pop-os/libcosmic#made-for-cosmic-flatpak-ids
 - remove the menu from the selection mode view
 - flicker when entering selectioin mode
--
+- fix readme
