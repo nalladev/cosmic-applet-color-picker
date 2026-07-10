@@ -91,17 +91,18 @@ struct MagnifierProgram {
 impl<Message> canvas::Program<Message, cosmic::Theme> for MagnifierProgram {
     type State = ();
 
+    #[allow(clippy::cast_precision_loss)]
     fn draw(
         &self,
         _state: &(),
-        _renderer: &cosmic::Renderer,
+        renderer: &cosmic::Renderer,
         _theme: &cosmic::Theme,
         bounds: cosmic::iced::Rectangle,
         _cursor: mouse::Cursor,
     ) -> Vec<canvas::Geometry> {
         use canvas::{Path, Stroke};
 
-        let mut frame = canvas::Frame::new(_renderer, bounds.size());
+        let mut frame = canvas::Frame::new(renderer, bounds.size());
         let cell = self.pixel_size;
         let total = self.grid_size as f32 * cell;
         let radius = total / 2.0;
@@ -157,8 +158,8 @@ impl<Message> canvas::Program<Message, cosmic::Theme> for MagnifierProgram {
         let crosshair_style = Stroke::default()
             .with_color(cosmic::iced::Color::WHITE)
             .with_width(1.5);
-        frame.stroke(&h_line, crosshair_style.clone());
-        frame.stroke(&v_line, crosshair_style.clone());
+        frame.stroke(&h_line, crosshair_style);
+        frame.stroke(&v_line, crosshair_style);
 
         // 4. Centre-pixel highlight (bright border).
         let centre_rect = Path::rectangle(
@@ -287,7 +288,7 @@ pub enum Message {
     SessionsPrepareFailed(String),
 
     // ── Wayland output tracking ─────────────────────────────────────
-    OutputEvent(OutputEvent, WlOutput),
+    OutputEvent(Box<OutputEvent>, WlOutput),
 
     // ── Picker mode ─────────────────────────────────────────────────
     /// User pressed Escape or overlay was closed externally.
@@ -387,7 +388,7 @@ impl cosmic::Application for AppModel {
         if self
             .picker
             .as_ref()
-            .map_or(false, |p| p.overlay_ids.contains(&id))
+            .is_some_and(|p| p.overlay_ids.contains(&id))
         {
             eprintln!("[DEBUG]   -> overlay close -> PickerCancel");
             return Some(Message::PickerCancel);
@@ -461,12 +462,9 @@ impl cosmic::Application for AppModel {
                 .map(|update| Message::UpdateConfig(update.config)),
             // Wayland output events (monitor hotplug, geometry changes)
             event::listen_with(|e, _, _| match e {
-                Event::PlatformSpecific(event::PlatformSpecific::Wayland(w_e)) => match w_e {
-                    event::wayland::Event::Output(o_event, wl_output) => {
-                        Some(Message::OutputEvent(o_event, wl_output))
-                    }
-                    _ => None,
-                },
+                Event::PlatformSpecific(event::PlatformSpecific::Wayland(
+                    event::wayland::Event::Output(o_event, wl_output),
+                )) => Some(Message::OutputEvent(Box::new(o_event), wl_output)),
                 _ => None,
             }),
         ];
@@ -483,6 +481,7 @@ impl cosmic::Application for AppModel {
         Subscription::batch(subs)
     }
 
+    #[allow(clippy::too_many_lines)]
     fn update(&mut self, message: Self::Message) -> Task<cosmic::Action<Self::Message>> {
         static FIRST_UPDATE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
         if FIRST_UPDATE.swap(false, std::sync::atomic::Ordering::Relaxed) {
@@ -543,10 +542,9 @@ impl cosmic::Application for AppModel {
                     self.popup_confirmed_for_picker = true;
                     eprintln!("[picker]   MATCH! popup confirmed closed, checking sessions.");
                     return self.maybe_start_final_capture();
-                } else {
-                    eprintln!("[picker]   no match (pending={:?}, normal={:?})",
-                        self.pending_popup_close, self.popup);
                 }
+                eprintln!("[picker]   no match (pending={:?}, normal={:?})",
+                    self.pending_popup_close, self.popup);
             }
 
             // ── Capture sessions negotiated (formats + buffers ready) ────
@@ -662,19 +660,18 @@ impl cosmic::Application for AppModel {
                     tasks.push(destroy_popup(popup_id));
                     tasks.push(prepare_task);
                     return Task::batch(tasks);
-                } else {
-                    eprintln!("[picker]   popup was already closed — starting capture immediately.");
-                    return Task::perform(
-                        picker::capture_all_outputs(),
-                        |result| {
-                            let msg = match result {
-                                Ok(outputs) => Message::CaptureCompleted(outputs),
-                                Err(e) => Message::CaptureFailed(e.to_string()),
-                            };
-                            cosmic::Action::App(msg)
-                        },
-                    );
                 }
+                eprintln!("[picker]   popup was already closed — starting capture immediately.");
+                return Task::perform(
+                    picker::capture_all_outputs(),
+                    |result| {
+                        let msg = match result {
+                            Ok(outputs) => Message::CaptureCompleted(outputs),
+                            Err(e) => Message::CaptureFailed(e.to_string()),
+                        };
+                        cosmic::Action::App(msg)
+                    },
+                );
             }
 
             // ── Capture completed successfully ──────────────────────────
@@ -777,7 +774,7 @@ impl cosmic::Application for AppModel {
 
             // ── Wayland output event (hotplug / geometry) ───────────────
             Message::OutputEvent(o_event, wl_output) => {
-                match o_event {
+                match *o_event {
                     OutputEvent::Created(Some(info))
                         if info.name.is_some()
                             && info.logical_size.is_some()
@@ -789,7 +786,7 @@ impl cosmic::Application for AppModel {
                             name: info.name.unwrap(),
                             logical_size: info
                                 .logical_size
-                                .map(|(w, h)| (w as u32, h as u32))
+                                .map(|(w, h)| (w.cast_unsigned(), h.cast_unsigned()))
                                 .unwrap(),
                             logical_pos: info.logical_position.unwrap(),
                         });
@@ -808,7 +805,7 @@ impl cosmic::Application for AppModel {
                             state.name = info.name.unwrap();
                             state.logical_size = info
                                 .logical_size
-                                .map(|(w, h)| (w as u32, h as u32))
+                                .map(|(w, h)| (w.cast_unsigned(), h.cast_unsigned()))
                                 .unwrap();
                             state.logical_pos = info.logical_position.unwrap();
                         } else {
@@ -820,7 +817,7 @@ impl cosmic::Application for AppModel {
                                 name: info.name.unwrap(),
                                 logical_size: info
                                     .logical_size
-                                    .map(|(w, h)| (w as u32, h as u32))
+                                    .map(|(w, h)| (w.cast_unsigned(), h.cast_unsigned()))
                                     .unwrap(),
                                 logical_pos: info.logical_position.unwrap(),
                             });
@@ -950,10 +947,10 @@ impl cosmic::Application for AppModel {
             // ── Frame tick (when picker is active) ──────────────────────
             Message::FrameTick => {
                 // Sanity check: Picking state must have captures.
-                if let Some(p) = self.picker.as_ref() {
-                    if p.captures.is_empty() {
-                        eprintln!("[picker] FrameTick — state={:?} but captures empty!", p.state);
-                    }
+                if let Some(p) = self.picker.as_ref()
+                    && p.captures.is_empty()
+                {
+                    eprintln!("[picker] FrameTick — state={:?} but captures empty!", p.state);
                 }
             }
 
@@ -987,6 +984,7 @@ impl AppModel {
     /// The copy-area shows a symbolic copy icon when a colour is available,
     /// a temporary checkmark after copying, or empty space when no colour
     /// has been selected.
+    #[allow(clippy::needless_pass_by_value)]
     fn color_row(
         &self,
         label: String,
@@ -997,7 +995,7 @@ impl AppModel {
         let has_color = !value.is_empty();
         let just_copied = self
             .copied_at
-            .map_or(false, |t| t.elapsed() < Duration::from_secs(2))
+            .is_some_and(|t| t.elapsed() < Duration::from_secs(2))
             && self.copied_target == Some(target);
 
         let copy_widget: Element<'_, Message> = if just_copied {
@@ -1016,7 +1014,7 @@ impl AppModel {
 
         padded_control(
             row![
-                text::body(format!("{}: {}", label, value))
+                text::body(format!("{label}: {value}"))
                     .width(Length::Fill)
                     .height(Length::Fixed(24.0))
                     .align_y(Alignment::Center),
@@ -1050,8 +1048,7 @@ impl AppModel {
         // Colour swatch.
         let swatch_color = self
             .sampled
-            .map(|c| cosmic::iced::Color::from_rgb8(c.r, c.g, c.b))
-            .unwrap_or(cosmic::iced::Color::WHITE);
+            .map_or(cosmic::iced::Color::WHITE, |c| cosmic::iced::Color::from_rgb8(c.r, c.g, c.b));
 
         let swatch = container(space::horizontal())
             .width(32)
@@ -1213,15 +1210,17 @@ impl AppModel {
     /// the other side near screen edges.  No text labels — the magnifier
     /// is purely visual.  Returns `None` if no hover state is available
     /// (e.g. before the first pointer-motion event).
+    #[allow(clippy::cast_precision_loss, clippy::cast_possible_truncation, clippy::cast_possible_wrap, clippy::cast_sign_loss)]
     fn build_magnifier(&self) -> Option<Element<'static, Message>> {
+        const GRID_SIZE: usize = 17;   // odd for centred crosshair
+        const PIXEL_SCALE: f32 = 8.0;  // logical pixels per magnified cell
+        const HALF: i32 = (GRID_SIZE / 2) as i32;
+        const BELOW_OFFSET: f32 = 28.0;
+
         let picker = self.picker.as_ref()?;
         let hover = picker.hover.as_ref()?;
         let capture = picker.captures.get(hover.output_index)?;
         let (cx, cy) = hover.pixel_pos;
-
-        const GRID_SIZE: usize = 17;   // odd for centred crosshair
-        const PIXEL_SCALE: f32 = 8.0;  // logical pixels per magnified cell
-        const HALF: i32 = (GRID_SIZE / 2) as i32;
 
         let total = GRID_SIZE as f32 * PIXEL_SCALE;
 
@@ -1268,7 +1267,6 @@ impl AppModel {
             mag_x = cur_x - total - offset_x;
         }
         // Flip vertically if magnifier overflows top edge.
-        const BELOW_OFFSET: f32 = 28.0;
         if mag_y < margin {
             mag_y = cur_y + BELOW_OFFSET;
         }

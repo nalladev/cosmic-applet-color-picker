@@ -42,7 +42,7 @@ fn create_memfd(width: u32, height: u32) -> OwnedFd {
     let name = c"pipewire-screencopy";
     let fd =
         rustix::fs::memfd_create(name, rustix::fs::MemfdFlags::CLOEXEC).expect("memfd_create");
-    rustix::fs::ftruncate(&fd, (width as u64 * height as u64 * 4) as _).expect("ftruncate");
+    rustix::fs::ftruncate(&fd, (u64::from(width) * u64::from(height) * 4) as _).expect("ftruncate");
     fd
 }
 
@@ -67,9 +67,17 @@ struct CaptureHelperInner {
     wl_shm: wl_shm::WlShm,
 }
 
+impl Default for CaptureHelper {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl CaptureHelper {
     /// Connect to the Wayland compositor, bind globals, discover outputs, and
     /// spawn a persistent dispatch thread.
+    #[must_use]
+    #[allow(clippy::missing_panics_doc)]
     pub fn new() -> Self {
         eprintln!(
             "[capture] CaptureHelper::new() — creating persistent Wayland connection"
@@ -126,8 +134,7 @@ impl CaptureHelper {
 
         let n_outputs = helper.inner.outputs.lock().unwrap().len();
         eprintln!(
-            "[capture] CaptureHelper initialized — {} output(s) found, spawning dispatch thread",
-            n_outputs
+            "[capture] CaptureHelper initialized — {n_outputs} output(s) found, spawning dispatch thread"
         );
 
         // Spawn the persistent dispatch thread (copied from portal).
@@ -144,11 +151,15 @@ impl CaptureHelper {
     }
 
     /// List all known outputs.
+    #[must_use]
+    #[allow(clippy::missing_panics_doc)]
     pub fn outputs(&self) -> Vec<wl_output::WlOutput> {
         self.inner.outputs.lock().unwrap().clone()
     }
 
     /// Get the output info for a given output.
+    #[must_use]
+    #[allow(clippy::missing_panics_doc)]
     pub fn output_info(&self, output: &wl_output::WlOutput) -> Option<OutputInfo> {
         self.inner
             .output_infos
@@ -171,6 +182,8 @@ impl CaptureHelper {
     }
 
     /// Create a capture session for the given source (copied from portal).
+    #[must_use]
+    #[allow(clippy::missing_panics_doc, clippy::needless_pass_by_value)]
     pub fn capture_source_session(&self, source: CaptureSource) -> CaptureSession {
         CaptureSession(Arc::new_cyclic(|weak_session| {
             let options = CaptureOptions::empty();
@@ -209,6 +222,7 @@ impl CaptureHelper {
     /// concurrently with other UI transitions (e.g. closing our popup) and
     /// pay only for the fast [`Self::finish_capture_shm_blocking`] step once
     /// it is actually safe to grab pixels.
+    #[must_use]
     pub fn prepare_source_shm_blocking(&self, source: CaptureSource) -> Option<PreparedCapture> {
         let session = self.capture_source_session(source);
 
@@ -224,8 +238,7 @@ impl CaptureHelper {
         }
 
         eprintln!(
-            "[capture] prepare_source_shm_blocking: {}x{} format=Abgr8888",
-            width, height
+            "[capture] prepare_source_shm_blocking: {width}x{height} format=Abgr8888",
         );
 
         // Create memfd and SHM buffer (copied from portal's create_shm_buffer).
@@ -248,6 +261,8 @@ impl CaptureHelper {
     ///
     /// This should be fast (roughly one compositor frame) since all the
     /// slow negotiation already happened in the `prepare` step.
+    #[must_use]
+    #[allow(clippy::cast_possible_wrap)]
     pub fn finish_capture_shm_blocking(&self, prepared: PreparedCapture) -> Option<ShmImage> {
         let PreparedCapture {
             session,
@@ -275,8 +290,7 @@ impl CaptureHelper {
                     WEnum::Value(t) => t,
                     WEnum::Unknown(v) => {
                         eprintln!(
-                            "[capture] unknown transform code {}, assuming Normal",
-                            v
+                            "[capture] unknown transform code {v}, assuming Normal",
                         );
                         wl_output::Transform::Normal
                     }
@@ -290,8 +304,7 @@ impl CaptureHelper {
             }
             Err(reason) => {
                 eprintln!(
-                    "[capture] capture_wl_buffer_blocking failed: {:?}",
-                    reason
+                    "[capture] capture_wl_buffer_blocking failed: {reason:?}",
                 );
                 None
             }
@@ -302,6 +315,7 @@ impl CaptureHelper {
     /// Equivalent to calling [`Self::prepare_source_shm_blocking`] followed
     /// immediately by [`Self::finish_capture_shm_blocking`].  Kept for
     /// call sites that don't need to overlap negotiation with other work.
+    #[must_use]
     pub fn capture_source_shm_blocking(&self, source: CaptureSource) -> Option<ShmImage> {
         let prepared = self.prepare_source_shm_blocking(source)?;
         self.finish_capture_shm_blocking(prepared)
@@ -311,6 +325,8 @@ impl CaptureHelper {
     ///
     /// The pool is destroyed immediately after creating the buffer, matching
     /// the portal's approach.
+    #[must_use]
+    #[allow(clippy::cast_possible_wrap)]
     pub fn create_shm_buffer(
         &self,
         fd: &OwnedFd,
@@ -397,7 +413,7 @@ impl CaptureSession {
         session.data::<SessionData>()?.session.upgrade().map(Self)
     }
 
-    /// Block until the compositor sends formats (BufferSize + ShmFormat + Done)
+    /// Block until the compositor sends formats (`BufferSize` + `ShmFormat` + Done)
     /// for this session.
     fn wait_for_formats_blocking(&self) -> Option<Formats> {
         let mut state = self.0.state.lock().unwrap();
@@ -432,16 +448,15 @@ impl CaptureSession {
         self.0.conn.flush().ok();
         match receiver.recv_timeout(Duration::from_secs(5)) {
             Ok(result) => result,
-            Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
-                Err(WEnum::Value(FailureReason::Stopped))
-            }
-            Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
+            Err(std::sync::mpsc::RecvTimeoutError::Timeout
+                | std::sync::mpsc::RecvTimeoutError::Disconnected) => {
                 Err(WEnum::Value(FailureReason::Stopped))
             }
         }
     }
 
-    #[allow(dead_code)]
+    #[must_use]
+    #[allow(dead_code, clippy::missing_panics_doc)]
     pub fn is_stopped(&self) -> bool {
         self.0.state.lock().unwrap().stopped
     }
@@ -462,6 +477,7 @@ pub struct ShmImage {
 
 impl ShmImage {
     /// Read pixel data from the memfd via mmap and decode as an RGBA image.
+    #[allow(clippy::missing_errors_doc)]
     pub fn image(&self) -> anyhow::Result<RgbaImage> {
         let mmap = unsafe { memmap2::Mmap::map(&self.fd.as_fd())? };
         RgbaImage::from_raw(self.width, self.height, mmap.to_vec())
@@ -470,6 +486,7 @@ impl ShmImage {
 
     /// Like `image()` but applies the output transform (rotation / flip) so
     /// the returned image always has `Normal` orientation.
+    #[allow(clippy::missing_errors_doc)]
     pub fn image_transformed(&self) -> anyhow::Result<RgbaImage> {
         let mut dynamic = image::DynamicImage::from(self.image()?);
         dynamic.apply_orientation(match self.transform {
@@ -509,8 +526,9 @@ impl ScreencopySessionDataExt for SessionData {
 
 struct FrameData {
     frame_data: ScreencopyFrameData,
+    #[allow(clippy::type_complexity)]
     sender: Mutex<
-        Option<std::sync::mpsc::Sender<Result<Frame, WEnum<FailureReason>>>>,
+        Option<std::sync::mpsc::Sender<Result<Frame, WEnum<FailureReason>>>>
     >,
 }
 
@@ -672,7 +690,7 @@ impl Dispatch<wl_buffer::WlBuffer, (), AppData> for AppData {
         _: &mut AppData,
         _: &wl_buffer::WlBuffer,
         _: <wl_buffer::WlBuffer as Proxy>::Event,
-        _: &(),
+        (): &(),
         _: &Connection,
         _: &QueueHandle<AppData>,
     ) {
@@ -684,7 +702,7 @@ impl Dispatch<wl_shm_pool::WlShmPool, (), AppData> for AppData {
         _: &mut AppData,
         _: &wl_shm_pool::WlShmPool,
         _: <wl_shm_pool::WlShmPool as Proxy>::Event,
-        _: &(),
+        (): &(),
         _: &Connection,
         _: &QueueHandle<AppData>,
     ) {

@@ -36,8 +36,8 @@ impl<'a, Message> KeyboardWrapper<'a, Message> {
     }
 }
 
-impl<'a, Message> Widget<Message, cosmic::Theme, cosmic::Renderer>
-    for KeyboardWrapper<'a, Message>
+impl<Message> Widget<Message, cosmic::Theme, cosmic::Renderer>
+    for KeyboardWrapper<'_, Message>
 where
     Message: Clone,
 {
@@ -98,13 +98,10 @@ where
             viewport,
         );
 
-        match event {
-            Event::Keyboard(keyboard::Event::KeyPressed { key, modifiers, .. }) => {
-                if let Some(message) = (self.handler)(key.clone(), *modifiers) {
-                    shell.publish(message);
-                }
-            }
-            _ => {}
+        if let Event::Keyboard(keyboard::Event::KeyPressed { key, modifiers, .. }) = event
+            && let Some(message) = (self.handler)(key.clone(), *modifiers)
+        {
+            shell.publish(message);
         }
     }
 

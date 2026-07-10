@@ -72,12 +72,20 @@ pub struct PickerController {
     pub state: PickerState,
 }
 
+#[allow(
+    clippy::cast_precision_loss,
+    clippy::cast_lossless,
+    clippy::cast_sign_loss,
+    clippy::cast_possible_truncation,
+    clippy::cast_possible_wrap
+)]
 impl PickerController {
     /// Create a new controller already in [`PickerState::Picking`] with
     /// captures, image handles and overlay IDs all provided at once.
     ///
     /// This is used when capture has already completed and overlays are
     /// about to be created — there is no intermediate [`Capturing`] phase.
+    #[must_use]
     pub fn new_with_captures(
         captures: Vec<CapturedOutput>,
         image_handles: Vec<cosmic::widget::image::Handle>,
@@ -114,6 +122,7 @@ impl PickerController {
     /// Determine which output contains the given logical (compositor-space)
     /// point.  Returns the index into `self.captures`, or `None` if the point
     /// falls outside all outputs.
+    #[must_use]
     pub fn output_at(&self, x: f32, y: f32) -> Option<usize> {
         self.captures.iter().position(|o| {
             let right = o.pos_x + o.logical_width as i32;
@@ -129,6 +138,7 @@ impl PickerController {
     ///
     /// Returns `None` if the point falls outside all outputs or if the
     /// underlying buffer does not contain the computed pixel offset.
+    #[must_use]
     pub fn sample_at(&self, x: f32, y: f32) -> Option<Color> {
         let idx = self.output_at(x, y)?;
         let output = &self.captures[idx];

@@ -27,6 +27,7 @@ use crate::picker::capture::{CaptureHelper, CaptureSource, PreparedCapture};
 use crate::picker::CapturedOutput;
 
 /// Extract a human-readable message from a `std::thread` panic payload.
+#[allow(clippy::needless_pass_by_value)]
 fn panic_message(panic: Box<dyn std::any::Any + Send>) -> String {
     if let Some(s) = panic.downcast_ref::<&str>() {
         s.to_string()
@@ -60,6 +61,7 @@ fn helper() -> &'static CaptureHelper {
 /// Wayland connection is created per capture.
 ///
 /// Returns the captured outputs with pre-built GPU handles.
+#[allow(clippy::missing_errors_doc, clippy::too_many_lines)]
 pub async fn capture_all_outputs() -> Result<Vec<CapturedOutput>, anyhow::Error> {
     let h = helper();
     let t_start = std::time::Instant::now();
@@ -68,7 +70,7 @@ pub async fn capture_all_outputs() -> Result<Vec<CapturedOutput>, anyhow::Error>
     // Read outputs from the helper's state (discovered at init time).
     let wl_outputs = h.outputs();
     let n = wl_outputs.len();
-    eprintln!("[capture] {} output(s) from CaptureHelper state", n);
+    eprintln!("[capture] {n} output(s) from CaptureHelper state");
 
     if n == 0 {
         return Err(anyhow::anyhow!("No Wayland outputs found"));
@@ -99,15 +101,16 @@ pub async fn capture_all_outputs() -> Result<Vec<CapturedOutput>, anyhow::Error>
                 let (ox, oy) = info.location;
                 let logical_size = info.logical_size.unwrap_or((0, 0));
 
-                eprintln!("[capture]   Capturing output '{}' ...", name);
+                eprintln!("[capture]   Capturing output '{name}' ...");
 
                 // --- portal's capture_source_shm flow (blocking) ---
-                let shm_img = match h.capture_source_shm_blocking(CaptureSource::Output(output.clone())) {
-                    Some(img) => img,
-                    None => {
-                        eprintln!("[capture]   FAILED: capture_source_shm_blocking returned None for '{}'", name);
-                        continue;
-                    }
+                let Some(shm_img) =
+                    h.capture_source_shm_blocking(CaptureSource::Output(output.clone()))
+                else {
+                    eprintln!(
+                        "[capture]   FAILED: capture_source_shm_blocking returned None for '{name}'"
+                    );
+                    continue;
                 };
 
                 // --- Read pixels via mmap + transform (portal's ShmImage::image_transformed) ---
@@ -115,13 +118,12 @@ pub async fn capture_all_outputs() -> Result<Vec<CapturedOutput>, anyhow::Error>
                 let rgba: RgbaImage = match shm_img.image_transformed() {
                     Ok(img) => img,
                     Err(e) => {
-                        eprintln!("[capture]   FAILED: image_transformed for '{}': {}", name, e);
+                        eprintln!("[capture]   FAILED: image_transformed for '{name}': {e}");
                         continue;
                     }
                 };
                 eprintln!(
-                    "[capture]   image_transformed for '{}' took {:?} ({}x{})",
-                    name,
+                    "[capture]   image_transformed for '{name}' took {:?} ({}x{})",
                     t_read.elapsed(),
                     rgba.width(),
                     rgba.height(),
@@ -135,8 +137,7 @@ pub async fn capture_all_outputs() -> Result<Vec<CapturedOutput>, anyhow::Error>
                     rgba.clone().into_vec(),
                 );
                 eprintln!(
-                    "[capture]   Handle::from_rgba for '{}' took {:?}",
-                    name,
+                    "[capture]   Handle::from_rgba for '{name}' took {:?}",
                     t_handle.elapsed(),
                 );
 
@@ -146,8 +147,8 @@ pub async fn capture_all_outputs() -> Result<Vec<CapturedOutput>, anyhow::Error>
                     image_handle: handle,
                     width: shm_img.width,
                     height: shm_img.height,
-                    logical_width: logical_size.0.max(0) as u32,
-                    logical_height: logical_size.1.max(0) as u32,
+                    logical_width: logical_size.0.max(0).cast_unsigned(),
+                    logical_height: logical_size.1.max(0).cast_unsigned(),
                     pos_x: ox,
                     pos_y: oy,
                 });
@@ -223,6 +224,7 @@ pub struct PreparedOutputCapture {
 /// depend on what is currently visible on screen, so it is safe to run
 /// concurrently with other UI transitions (e.g. closing a popup).  Call
 /// [`finish_all_outputs`] once it is actually safe to capture pixels.
+#[allow(clippy::missing_errors_doc)]
 pub async fn prepare_all_outputs() -> Result<Vec<PreparedOutputCapture>, anyhow::Error> {
     let h = helper();
     let t_start = std::time::Instant::now();
@@ -230,7 +232,7 @@ pub async fn prepare_all_outputs() -> Result<Vec<PreparedOutputCapture>, anyhow:
 
     let wl_outputs = h.outputs();
     let n = wl_outputs.len();
-    eprintln!("[capture] {} output(s) from CaptureHelper state", n);
+    eprintln!("[capture] {n} output(s) from CaptureHelper state");
 
     if n == 0 {
         return Err(anyhow::anyhow!("No Wayland outputs found"));
@@ -258,12 +260,12 @@ pub async fn prepare_all_outputs() -> Result<Vec<PreparedOutputCapture>, anyhow:
                 let (ox, oy) = info.location;
                 let logical_size = info.logical_size.unwrap_or((0, 0));
 
-                eprintln!("[capture]   Preparing output '{}' ...", name);
+                eprintln!("[capture]   Preparing output '{name}' ...");
 
                 let Some(prepared) =
                     h.prepare_source_shm_blocking(CaptureSource::Output(output.clone()))
                 else {
-                    eprintln!("[capture]   FAILED: prepare_source_shm_blocking for '{}'", name);
+                    eprintln!("[capture]   FAILED: prepare_source_shm_blocking for '{name}'");
                     continue;
                 };
 
@@ -271,8 +273,8 @@ pub async fn prepare_all_outputs() -> Result<Vec<PreparedOutputCapture>, anyhow:
                     name,
                     pos_x: ox,
                     pos_y: oy,
-                    logical_width: logical_size.0.max(0) as u32,
-                    logical_height: logical_size.1.max(0) as u32,
+                    logical_width: logical_size.0.max(0).cast_unsigned(),
+                    logical_height: logical_size.1.max(0).cast_unsigned(),
                     prepared,
                 });
             }
@@ -309,13 +311,14 @@ pub async fn prepare_all_outputs() -> Result<Vec<PreparedOutputCapture>, anyhow:
 ///
 /// This should be fast (roughly one compositor frame per output) since all
 /// session negotiation already happened in [`prepare_all_outputs`].
+#[allow(clippy::missing_errors_doc)]
 pub async fn finish_all_outputs(
     prepared: Vec<PreparedOutputCapture>,
 ) -> Result<Vec<CapturedOutput>, anyhow::Error> {
     let h = helper();
     let t_start = std::time::Instant::now();
     let n = prepared.len();
-    eprintln!("[capture] === Finishing capture for {} prepared output(s) ===", n);
+    eprintln!("[capture] === Finishing capture for {n} prepared output(s) ===");
 
     let (tx, rx) = oneshot::channel();
 
@@ -332,18 +335,15 @@ pub async fn finish_all_outputs(
                     prepared,
                 } = p;
 
-                let shm_img = match h.finish_capture_shm_blocking(prepared) {
-                    Some(img) => img,
-                    None => {
-                        eprintln!("[capture]   FAILED: finish_capture_shm_blocking for '{}'", name);
-                        continue;
-                    }
+                let Some(shm_img) = h.finish_capture_shm_blocking(prepared) else {
+                    eprintln!("[capture]   FAILED: finish_capture_shm_blocking for '{name}'");
+                    continue;
                 };
 
                 let rgba: RgbaImage = match shm_img.image_transformed() {
                     Ok(img) => img,
                     Err(e) => {
-                        eprintln!("[capture]   FAILED: image_transformed for '{}': {}", name, e);
+                        eprintln!("[capture]   FAILED: image_transformed for '{name}': {e}");
                         continue;
                     }
                 };

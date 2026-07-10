@@ -90,52 +90,56 @@ pub struct Color {
 
 impl Color {
     /// Returns the HEX string (e.g. `#FF8800`).
+    #[must_use]
     pub fn hex(&self) -> String {
         format!("#{:02X}{:02X}{:02X}", self.r, self.g, self.b)
     }
 
     /// Returns the RGB string (e.g. `rgb(255, 136, 0)`).
+    #[must_use]
     pub fn rgb(&self) -> String {
         format!("rgb({}, {}, {})", self.r, self.g, self.b)
     }
 
     /// Returns the HSL string.
+    #[must_use]
     pub fn hsl(&self) -> String {
         let (h, s, l) = self.hsl_values();
         format!("hsl({:.0}, {:.0}%, {:.0}%)", h, s * 100.0, l * 100.0)
     }
 
     /// Compute HSL from sRGB.
+    #[allow(clippy::float_cmp, clippy::manual_midpoint, clippy::trivially_copy_pass_by_ref)]
     fn hsl_values(&self) -> (f64, f64, f64) {
-        let r = self.r as f64 / 255.0;
-        let g = self.g as f64 / 255.0;
-        let b = self.b as f64 / 255.0;
+        let red = f64::from(self.r) / 255.0;
+        let green = f64::from(self.g) / 255.0;
+        let blue = f64::from(self.b) / 255.0;
 
-        let max = r.max(g).max(b);
-        let min = r.min(g).min(b);
-        let delta = max - min;
+        let max_component = red.max(green).max(blue);
+        let min_component = red.min(green).min(blue);
+        let delta = max_component - min_component;
 
-        let l = (max + min) / 2.0;
+        let lightness = (max_component + min_component) / 2.0;
 
         if delta == 0.0 {
-            return (0.0, 0.0, l);
+            return (0.0, 0.0, lightness);
         }
 
-        let s = if l > 0.5 {
-            delta / (2.0 - max - min)
+        let saturation = if lightness > 0.5 {
+            delta / (2.0 - max_component - min_component)
         } else {
-            delta / (max + min)
+            delta / (max_component + min_component)
         };
 
-        let h = if max == r {
-            (g - b) / delta + if g < b { 6.0 } else { 0.0 }
-        } else if max == g {
-            (b - r) / delta + 2.0
+        let hue = if max_component == red {
+            (green - blue) / delta + if green < blue { 6.0 } else { 0.0 }
+        } else if max_component == green {
+            (blue - red) / delta + 2.0
         } else {
-            (r - g) / delta + 4.0
+            (red - green) / delta + 4.0
         };
 
-        (h * 60.0, s, l)
+        (hue * 60.0, saturation, lightness)
     }
 }
 
