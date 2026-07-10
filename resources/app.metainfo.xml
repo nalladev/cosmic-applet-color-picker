@@ -10,6 +10,7 @@
   <launchable type="desktop-id">io.github.nalladev.CosmicExtAppletEyedropper.desktop</launchable>
   <provides>
     <id>io.github.nalladev.CosmicExtAppletEyedropper</id>
+    <id>com.system76.CosmicApplet</id>
     <binaries>
       <binary>cosmic-ext-applet-eyedropper</binary>
     </binaries>
