@@ -6,6 +6,7 @@ target/
 vendor/
 vendor.tar
 .flatpak-builder/
+flatpak-builder-tools/
 build-dir/
 debian/*
 !debian/changelog
