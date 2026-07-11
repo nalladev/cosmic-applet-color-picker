@@ -10,7 +10,7 @@ use crate::picker::{self, CapturedOutput, Color};
 use crate::picker::PickerController;
 use crate::widget::keyboard_wrapper::KeyboardWrapper;
 use cosmic::{
-    applet::padded_control,
+    applet::{menu_button, padded_control},
     cosmic_config::{self, CosmicConfigEntry},
     cosmic_theme::Spacing,
     iced::{
@@ -989,40 +989,41 @@ impl AppModel {
         target: CopyTarget,
         msg: Message,
     ) -> Element<'_, Message> {
-        let has_color = !value.is_empty();
         let just_copied = self
             .copied_at
             .is_some_and(|t| t.elapsed() < Duration::from_secs(2))
             && self.copied_target == Some(target);
 
-        let copy_widget: Element<'_, Message> = if just_copied {
-            container(icon::from_name("object-select-symbolic").size(14).symbolic(true))
-                .center(Length::Fixed(24.0))
-                .into()
-        } else if has_color {
-            let handle = icon::from_name("edit-copy-symbolic").size(14).symbolic(true).handle();
-            button::icon(handle)
-                .on_press(msg)
-                .padding(0)
-                .into()
-        } else {
-            space::horizontal().width(Length::Fixed(24.0)).into()
-        };
-
         let Spacing { space_xxs, .. } = theme::active().cosmic().spacing;
 
-        padded_control(
+        let indicator: Element<'_, Message> = if just_copied {
+            icon::from_name("object-select-symbolic")
+                .size(14)
+                .symbolic(true)
+                .into()
+        } else {
+            icon::from_name("edit-copy-symbolic")
+                .size(14)
+                .symbolic(true)
+                .into()
+        };
+
+        let content = row![
             row![
-                text::body(format!("{label}: {value}"))
-                    .width(Length::Fill)
-                    .height(Length::Fixed(24.0))
-                    .align_y(Alignment::Center),
-                copy_widget,
+                text::caption_heading(label),
+                text::monotext(value.to_owned()),
             ]
             .spacing(f32::from(space_xxs))
+            .width(Length::Fill)
             .align_y(Alignment::Center),
-        )
-        .into()
+            indicator,
+        ]
+        .spacing(f32::from(space_xxs))
+        .align_y(Alignment::Center);
+
+        menu_button(content)
+            .on_press(msg)
+            .into()
     }
 
     /// Render the normal eyedropper popup.
@@ -1093,14 +1094,16 @@ impl AppModel {
             .spacing(0);
 
         // ── Colour values section ───────────────────────────────────────
-        content = content
-            .push(
-                padded_control(divider::horizontal::default())
-                    .padding([space_xxs, space_s]),
-            )
-            .push(self.color_row(fl!("hex"), &hex_val, CopyTarget::Hex, Message::CopyHex))
-            .push(self.color_row(fl!("rgb"), &rgb_val, CopyTarget::Rgb, Message::CopyRgb))
-            .push(self.color_row(fl!("hsl"), &hsl_val, CopyTarget::Hsl, Message::CopyHsl));
+        if has_color {
+            content = content
+                .push(
+                    padded_control(divider::horizontal::default())
+                        .padding([space_xxs, space_s]),
+                )
+                .push(self.color_row(fl!("hex"), &hex_val, CopyTarget::Hex, Message::CopyHex))
+                .push(self.color_row(fl!("rgb"), &rgb_val, CopyTarget::Rgb, Message::CopyRgb))
+                .push(self.color_row(fl!("hsl"), &hsl_val, CopyTarget::Hsl, Message::CopyHsl));
+        }
 
         // Status / error message.
         if let Some(ref err) = self.error {
