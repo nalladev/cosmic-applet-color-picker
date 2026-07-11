@@ -36,12 +36,20 @@ build-release *args: (build-debug '--release' args)
 # Compiles release profile with vendored dependencies
 build-vendored *args: vendor-extract (build-release '--frozen --offline' args)
 
-# Runs a clippy check
+# Formats the codebase
+fmt *args:
+    cargo fmt {{args}}
+
+# Runs a cargo type check
 check *args:
+    cargo check {{args}}
+
+# Runs clippy lints
+lint *args:
     cargo clippy --all-features {{args}} -- -W clippy::pedantic
 
-# Runs a clippy check with JSON message format
-check-json: (check '--message-format=json')
+# Runs clippy lints with JSON message format
+lint-json: (lint '--message-format=json')
 
 # Run the application for testing purposes
 run *args:
