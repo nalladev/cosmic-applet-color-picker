@@ -12,7 +12,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
@@ -23,7 +23,7 @@ jobs:
 
       - name: Validate manifest syntax
         run: |
-          flatpak-builder --dry-run build-dir flatpak/io.github.nalladev.CosmicExtAppletEyedropper.json
+          flatpak-builder --show-manifest flatpak/io.github.nalladev.CosmicExtAppletEyedropper.json > /dev/null
 
       - name: Regenerate cargo sources
         run: |
