@@ -1092,22 +1092,14 @@ impl AppModel {
             .padding([space_xxs, 0])
             .spacing(0);
 
-        // ── Copy rows ─────────────────────────────────────────────────
+        // ── Colour values section ───────────────────────────────────────
         content = content
             .push(
                 padded_control(divider::horizontal::default())
                     .padding([space_xxs, space_s]),
             )
             .push(self.color_row(fl!("hex"), &hex_val, CopyTarget::Hex, Message::CopyHex))
-            .push(
-                padded_control(divider::horizontal::default())
-                    .padding([space_xxs, space_s]),
-            )
             .push(self.color_row(fl!("rgb"), &rgb_val, CopyTarget::Rgb, Message::CopyRgb))
-            .push(
-                padded_control(divider::horizontal::default())
-                    .padding([space_xxs, space_s]),
-            )
             .push(self.color_row(fl!("hsl"), &hsl_val, CopyTarget::Hsl, Message::CopyHsl));
 
         // Status / error message.
