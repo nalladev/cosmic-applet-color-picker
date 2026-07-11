@@ -16,11 +16,12 @@ use cosmic::{
     iced::{
         Alignment, Border, ContentFit, Event, Length, Limits, Subscription,
         event, mouse,
-        platform_specific::shell::wayland::commands::popup::{destroy_popup, get_popup},
         widget::{column, container, row, space, MouseArea, Stack},
         window::{self, Id},
     },
     prelude::*,
+    surface,
+    surface::action::LiveSettings,
     theme,
     widget::{button, canvas, divider, icon, image, text},
 };
@@ -96,11 +97,15 @@ impl<Message> canvas::Program<Message, cosmic::Theme> for MagnifierProgram {
         &self,
         _state: &(),
         renderer: &cosmic::Renderer,
-        _theme: &cosmic::Theme,
+        theme: &cosmic::Theme,
         bounds: cosmic::iced::Rectangle,
         _cursor: mouse::Cursor,
     ) -> Vec<canvas::Geometry> {
         use canvas::{Path, Stroke};
+
+        let cosmic = theme.cosmic();
+        let fg = cosmic::iced::Color::from(cosmic.on_bg_color());
+        let bg = cosmic::iced::Color::from(cosmic.bg_color());
 
         let mut frame = canvas::Frame::new(renderer, bounds.size());
         let cell = self.pixel_size;
@@ -108,11 +113,14 @@ impl<Message> canvas::Program<Message, cosmic::Theme> for MagnifierProgram {
         let radius = total / 2.0;
         let centre = cosmic::iced::Point::new(radius, radius);
 
-        // 1. Dark circular background.
+        // 1. Semi-transparent circular background matching the theme.
         let circle_bg = Path::circle(centre, radius);
         frame.fill(
             &circle_bg,
-            cosmic::iced::Color::from_rgba(0.0, 0.0, 0.0, 0.75),
+            cosmic::iced::Color {
+                a: 0.75,
+                ..bg
+            },
         );
 
         // 2. Draw each magnified pixel, but only if it lies within the circle.
@@ -156,7 +164,7 @@ impl<Message> canvas::Program<Message, cosmic::Theme> for MagnifierProgram {
         );
 
         let crosshair_style = Stroke::default()
-            .with_color(cosmic::iced::Color::WHITE)
+            .with_color(fg)
             .with_width(1.5);
         frame.stroke(&h_line, crosshair_style);
         frame.stroke(&v_line, crosshair_style);
@@ -169,7 +177,7 @@ impl<Message> canvas::Program<Message, cosmic::Theme> for MagnifierProgram {
         frame.stroke(
             &centre_rect,
             Stroke::default()
-                .with_color(cosmic::iced::Color::WHITE)
+                .with_color(fg)
                 .with_width(2.0),
         );
 
@@ -178,7 +186,7 @@ impl<Message> canvas::Program<Message, cosmic::Theme> for MagnifierProgram {
         frame.stroke(
             &border,
             Stroke::default()
-                .with_color(cosmic::iced::Color::WHITE)
+                .with_color(fg)
                 .with_width(1.5),
         );
 
@@ -341,18 +349,14 @@ impl cosmic::Application for AppModel {
             core: cosmic::Core,
             _flags: Self::Flags,
         ) -> (Self, Task<cosmic::Action<Self::Message>>) {
-            let t_start = std::time::Instant::now();
-            eprintln!("[startup] init() called at t={:?}", t_start.elapsed());
-            eprintln!("[startup] before config load at t={:?}", t_start.elapsed());
             let config_entry = cosmic_config::Config::new(Self::APP_ID, Config::VERSION)
                 .map(|context| match Config::get_entry(&context) {
                     Ok(config) => config,
                     Err((_errors, config)) => config,
                 })
                 .unwrap_or_default();
-            eprintln!("[startup] after config load at t={:?}", t_start.elapsed());
 
-                let app = AppModel {
+            let app = AppModel {
                 core,
                 config: config_entry,
                 popup: None,
@@ -373,24 +377,30 @@ impl cosmic::Application for AppModel {
                 copied_at: None,
             };
 
-            eprintln!("[startup] init() returning at t={:?}", t_start.elapsed());
-            let r = (app, Task::none());
-            eprintln!("[startup] init() done at t={:?}", t_start.elapsed());
-            r
+            // If frosted glass is enabled for applets but the runtime didn't
+            // auto-enable blur (theme.transparent starts false), poke it now.
+            // This sets `blur_enabled = true` in the libcosmic runtime so that
+            // popups created later will receive blur via the Opened handler.
+            let blur_task = {
+                let theme = cosmic::theme::active();
+                if theme.cosmic().frosted_applets && !theme.transparent {
+                    cosmic::task::message(cosmic::Action::Cosmic(
+                        cosmic::app::Action::BlurEnabled,
+                    ))
+                } else {
+                    Task::none()
+                }
+            };
+            (app, blur_task)
     }
 
     fn on_close_requested(&self, id: Id) -> Option<Message> {
-        eprintln!("[DEBUG] on_close_requested(id={id:?})");
-        eprintln!("[DEBUG]   popup={:?}, pending={:?}, picker_overlays={:?}",
-            self.popup, self.pending_popup_close,
-            self.picker.as_ref().map(|p| &p.overlay_ids));
         // If an overlay window is closed externally, cancel the picker.
         if self
             .picker
             .as_ref()
             .is_some_and(|p| p.overlay_ids.contains(&id))
         {
-            eprintln!("[DEBUG]   -> overlay close -> PickerCancel");
             return Some(Message::PickerCancel);
         }
         // Otherwise it's the popup.  Also match popups that were closed
@@ -398,19 +408,13 @@ impl cosmic::Application for AppModel {
         // close notification must still arrive even though `self.popup`
         // was already cleared to None.  See EyedropperClicked.
         if self.popup == Some(id) || self.pending_popup_close == Some(id) {
-            eprintln!("[DEBUG]   -> popup close -> PopupClosed");
             return Some(Message::PopupClosed(id));
         }
-        eprintln!("[DEBUG]   -> no match, returning None");
         None
     }
 
     /// Draw the applet button in the panel.
     fn view(&self) -> Element<'_, Self::Message> {
-        static FIRST_VIEW: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
-        if FIRST_VIEW.swap(false, std::sync::atomic::Ordering::Relaxed) {
-            eprintln!("[startup] first view() call — applet button rendered");
-        }
         self.core
             .applet
             .icon_button("color-select-symbolic")
@@ -420,13 +424,6 @@ impl cosmic::Application for AppModel {
 
     /// Draw a window – either the popup or a picker overlay.
     fn view_window(&self, id: Id) -> Element<'_, Self::Message> {
-        static VW_COUNT: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
-        let count = VW_COUNT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        eprintln!("[DEBUG] view_window(id={id:?}) call #{count}");
-        eprintln!("[DEBUG]   picker={:?}, popup={:?}",
-            self.picker.as_ref().map(|p| &p.overlay_ids),
-            self.popup);
-
         // Is this a picker overlay (active picker or pre-created)?
         if self
             .picker
@@ -434,27 +431,19 @@ impl cosmic::Application for AppModel {
             .is_some_and(|p| p.overlay_ids.contains(&id))
             || self.pending_overlay_ids.contains(&id)
         {
-            eprintln!("[DEBUG]   -> routing to view_picker_overlay");
             return self.view_picker_overlay(id);
         }
 
         // Is this the popup?
         if self.popup == Some(id) {
-            eprintln!("[DEBUG]   -> routing to view_popup");
             return self.view_popup();
         }
 
         // Fallback: unknown window — render nothing.
-        eprintln!("[DEBUG]   -> UNKNOWN window id, rendering placeholder");
         space::horizontal().width(Length::Fixed(1.0)).into()
     }
 
     fn subscription(&self) -> Subscription<Self::Message> {
-        static FIRST_SUB: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
-        if FIRST_SUB.swap(false, std::sync::atomic::Ordering::Relaxed) {
-            eprintln!("[startup] first subscription() call");
-        }
-
         let mut subs: Vec<Subscription<Self::Message>> = vec![
             // Config changes
             self.core()
@@ -483,10 +472,6 @@ impl cosmic::Application for AppModel {
 
     #[allow(clippy::too_many_lines)]
     fn update(&mut self, message: Self::Message) -> Task<cosmic::Action<Self::Message>> {
-        static FIRST_UPDATE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
-        if FIRST_UPDATE.swap(false, std::sync::atomic::Ordering::Relaxed) {
-            eprintln!("[startup] first update() received: {message:?}");
-        }
 
         match message {
             // ── Toggle the eyedropper popup ─────────────────────────────
@@ -496,23 +481,29 @@ impl cosmic::Application for AppModel {
                     return Task::none();
                 }
                 return if let Some(p) = self.popup.take() {
-                    destroy_popup(p)
+                    surface::surface_task(surface::action::destroy_popup(p))
                 } else {
-                    let new_id = Id::unique();
-                    self.popup.replace(new_id);
-                    let mut popup_settings = self.core.applet.get_popup_settings(
-                        self.core.main_window_id().unwrap(),
-                        new_id,
+                    surface::surface_task(surface::action::app_popup(
+                        |_| LiveSettings::default(),
+                        |app: &mut AppModel| {
+                            let new_id = Id::unique();
+                            app.popup.replace(new_id);
+                            let mut popup_settings = app.core.applet.get_popup_settings(
+                                app.core.main_window_id().unwrap(),
+                                new_id,
+                                None,
+                                None,
+                                None,
+                            );
+                            popup_settings.positioner.size_limits = Limits::NONE
+                                .max_width(372.0)
+                                .min_width(300.0)
+                                .min_height(200.0)
+                                .max_height(1080.0);
+                            popup_settings
+                        },
                         None,
-                        None,
-                        None,
-                    );
-                    popup_settings.positioner.size_limits = Limits::NONE
-                        .max_width(372.0)
-                        .min_width(300.0)
-                        .min_height(200.0)
-                        .max_height(1080.0);
-                    get_popup(popup_settings)
+                    ))
                 };
             }
 
@@ -657,7 +648,7 @@ impl cosmic::Application for AppModel {
                     // When the capture completes, the frozen image populates the
                     // already-visible overlay — no flicker.
                     let mut tasks: Vec<Task<cosmic::Action<Self::Message>>> = overlay_tasks;
-                    tasks.push(destroy_popup(popup_id));
+                    tasks.push(surface::surface_task(surface::action::destroy_popup(popup_id)));
                     tasks.push(prepare_task);
                     return Task::batch(tasks);
                 }
@@ -866,21 +857,27 @@ impl cosmic::Application for AppModel {
                         }
 
                         // Reopen the popup.
-                        let new_id = Id::unique();
-                        self.popup.replace(new_id);
-                        let mut popup_settings = self.core.applet.get_popup_settings(
-                            self.core.main_window_id().unwrap(),
-                            new_id,
+                        tasks.push(surface::surface_task(surface::action::app_popup(
+                            |_| LiveSettings::default(),
+                            |app: &mut AppModel| {
+                                let new_id = Id::unique();
+                                app.popup.replace(new_id);
+                                let mut popup_settings = app.core.applet.get_popup_settings(
+                                    app.core.main_window_id().unwrap(),
+                                    new_id,
+                                    None,
+                                    None,
+                                    None,
+                                );
+                                popup_settings.positioner.size_limits = Limits::NONE
+                                    .max_width(372.0)
+                                    .min_width(300.0)
+                                    .min_height(200.0)
+                                    .max_height(1080.0);
+                                popup_settings
+                            },
                             None,
-                            None,
-                            None,
-                        );
-                        popup_settings.positioner.size_limits = Limits::NONE
-                            .max_width(372.0)
-                            .min_width(300.0)
-                            .min_height(200.0)
-                            .max_height(1080.0);
-                        tasks.push(get_popup(popup_settings));
+                        )));
 
                         return Task::batch(tasks);
                     }
@@ -1012,6 +1009,8 @@ impl AppModel {
             space::horizontal().width(Length::Fixed(24.0)).into()
         };
 
+        let Spacing { space_xxs, .. } = theme::active().cosmic().spacing;
+
         padded_control(
             row![
                 text::body(format!("{label}: {value}"))
@@ -1020,7 +1019,7 @@ impl AppModel {
                     .align_y(Alignment::Center),
                 copy_widget,
             ]
-            .spacing(8)
+            .spacing(f32::from(space_xxs))
             .align_y(Alignment::Center),
         )
         .into()
@@ -1031,9 +1030,11 @@ impl AppModel {
         let Spacing {
             space_xxxs: _,
             space_xxs,
+            space_xs,
             space_s,
             ..
         } = theme::active().cosmic().spacing;
+        let corner_radii = theme::active().cosmic().corner_radii;
 
         // Derive display strings.
         let (hex_val, rgb_val, hsl_val): (String, String, String) =
@@ -1056,7 +1057,7 @@ impl AppModel {
             .style(move |_: &cosmic::Theme| container::Style {
                 background: Some(swatch_color.into()),
                 border: Border {
-                    radius: 6.0.into(),
+                    radius: corner_radii.radius_s.into(),
                     ..Default::default()
                 },
                 ..Default::default()
@@ -1064,12 +1065,12 @@ impl AppModel {
 
         // Centre text: HEX value or placeholder.
         let centre: Element<'_, Message> = if has_color {
-            container(text::body(hex_val.clone()).size(14).align_y(Alignment::Center))
+            container(text::body(hex_val.clone()).align_y(Alignment::Center))
                 .width(Length::Fill)
                 .align_y(Alignment::Center)
                 .into()
         } else {
-            container(text::body(fl!("no-color-selected")).size(14).align_y(Alignment::Center))
+            container(text::body(fl!("no-color-selected")).align_y(Alignment::Center))
                 .width(Length::Fill)
                 .align_y(Alignment::Center)
                 .into()
@@ -1084,11 +1085,11 @@ impl AppModel {
             centre,
             select_button,
         ]
-        .spacing(10)
+        .spacing(f32::from(space_xs))
         .align_y(Alignment::Center);
 
         let mut content = column![padded_control(heading)]
-            .padding([8, 0])
+            .padding([space_xxs, 0])
             .spacing(0);
 
         // ── Copy rows ─────────────────────────────────────────────────
@@ -1360,21 +1361,27 @@ impl AppModel {
         // Always reopen – even when picker was None (e.g. Escape pressed
         // before capture completed) – to avoid leaving the user without UI.
         if self.popup.is_none() {
-            let new_id = Id::unique();
-            self.popup.replace(new_id);
-            let mut popup_settings = self.core.applet.get_popup_settings(
-                self.core.main_window_id().unwrap(),
-                new_id,
+            tasks.push(surface::surface_task(surface::action::app_popup(
+                |_| LiveSettings::default(),
+                |app: &mut AppModel| {
+                    let new_id = Id::unique();
+                    app.popup.replace(new_id);
+                    let mut popup_settings = app.core.applet.get_popup_settings(
+                        app.core.main_window_id().unwrap(),
+                        new_id,
+                        None,
+                        None,
+                        None,
+                    );
+                    popup_settings.positioner.size_limits = Limits::NONE
+                        .max_width(372.0)
+                        .min_width(300.0)
+                        .min_height(200.0)
+                        .max_height(1080.0);
+                    popup_settings
+                },
                 None,
-                None,
-                None,
-            );
-            popup_settings.positioner.size_limits = Limits::NONE
-                .max_width(372.0)
-                .min_width(300.0)
-                .min_height(200.0)
-                .max_height(1080.0);
-            tasks.push(get_popup(popup_settings));
+            )));
         }
 
         if tasks.is_empty() { Task::none() } else { Task::batch(tasks) }
