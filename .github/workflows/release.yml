@@ -1,58 +1,104 @@
-name: Release
+name: release
 
 on:
   push:
     tags:
-      - 'v*'
+      - "v*"
+
+env:
+  CARGO_TERM_COLOR: always
+  GITHUB_TOKEN: ${{ github.token }}
+  RUST_BACKTRACE: 1
 
 jobs:
   build:
-    name: Build Native Packages
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
+    name: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - aarch64-unknown-linux-gnu
+          - x86_64-unknown-linux-gnu
+        include:
+          - target: aarch64-unknown-linux-gnu
+            os: ubuntu-24.04-arm
+            target_rustflags: ""
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+            target_rustflags: ""
+    runs-on: ${{matrix.os}}
     steps:
-      - name: Checkout
-        uses: actions/checkout@v5
-        with:
-          fetch-depth: 0
-
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Install dependencies
+      - uses: actions/checkout@v4
+      - name: Install build dependencies
         run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            libpipewire-0.3-dev \
-            libxkbcommon-dev \
-            libwayland-dev \
-            libudev-dev \
-            libinput-dev \
-            libgbm-dev \
-            libseat-dev \
-            libpango1.0-dev \
-            libglib2.0-dev \
-            libegl-dev \
-            libdbus-1-dev
-          cargo install cargo-deb
-          cargo install cargo-generate-rpm
+          sudo apt update
+          sudo apt install -y libxkbcommon-dev libwayland-dev libdbus-1-dev libpulse-dev libpipewire-0.3-dev libinput-dev
+      - name: Install cargo-binstall
+        uses: cargo-bins/cargo-binstall@v1.15.0
+      - name: Install packaging plugins
+        run: |
+          cargo binstall just
+          cargo binstall cargo-deb
+          cargo binstall cargo-generate-rpm
+      - name: Build packages
+        id: package
+        run: |
+          just build-release
+          just build-deb
+          just build-rpm
 
-      - name: Build release
-        run: cargo build --release
+          NAME="cosmic-ext-applet-eyedropper"
+          ARCH=`uname -m`
 
-      - name: Build .deb
-        run: cargo deb
+          mkdir ./$NAME
+          cp ./target/release/$NAME ./resources/*.desktop ./resources/*.metainfo.xml ./resources/*.svg ./resources/install.sh  ./$NAME/
+          strip -s ./$NAME/$NAME
+          tar -czvf $NAME-$ARCH.tar.gz $NAME
 
-      - name: Build .rpm
-        run: cargo generate-rpm
+          cp ./target/debian/*.deb ./
+          cp ./target/generate-rpm/*.rpm ./
 
-      - name: Create Release
-        uses: softprops/action-gh-release@v1
+          echo $ARCH=./*.tar.gz >> $GITHUB_OUTPUT
+          echo $ARCH-deb=./*.deb >> $GITHUB_OUTPUT
+          echo $ARCH-rpm=./*.rpm >> $GITHUB_OUTPUT
+      - name: Publish artifacts and release
+        uses: softprops/action-gh-release@v2
         with:
+          generate_release_notes: true
+          draft: false
           files: |
-            target/debian/*.deb
-            target/generate-rpm/*.rpm
-            target/release/cosmic-ext-applet-eyedropper
+            ${{ steps.package.outputs.x86_64 }}
+            ${{ steps.package.outputs.aarch64 }}
+            ${{ steps.package.outputs.x86_64-deb }}
+            ${{ steps.package.outputs.aarch64-deb }}
+            ${{ steps.package.outputs.x86_64-rpm }}
+            ${{ steps.package.outputs.aarch64-rpm }}
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  checksum:
+    runs-on: ubuntu-latest
+    needs:
+      - build
+    steps:
+      - name: Download Release Archives
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: >-
+          gh release download
+          --repo nalladev/cosmic-ext-applet-eyedropper
+          --pattern '*'
+          --dir release
+          ${{ github.ref_name }}
+      - name: Create Checksums
+        run: |
+          cd release
+          shasum -a 256 * > ../SHA256SUMS
+      - name: Publish Checksums
+        uses: softprops/action-gh-release@v2.2.1
+        with:
+          draft: false
+          files: SHA256SUMS
+          prerelease: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
