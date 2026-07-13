@@ -40,6 +40,20 @@ pkill cosmic-panel
 
 Open **Settings → Desktop → Panel → Applets** and enable **Eyedropper**.
 
+### Flatpak
+
+Requires `flatpak-builder` and the Freedesktop SDK:
+
+```sh
+# Install the Freedesktop SDK extension (if not already installed)
+flatpak install --user org.freedesktop.Platform//25.08 org.freedesktop.Sdk//25.08
+
+# Build and install the Flatpak
+just flatpak-build
+```
+
+This auto-regenerates the Flatpak cargo sources when `Cargo.lock` changes.
+
 ### From source
 
 ```sh
