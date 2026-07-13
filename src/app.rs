@@ -739,8 +739,10 @@ impl cosmic::Application for AppModel {
                         let mut i = 0usize;
                         for dy in -HALF..=HALF {
                             for dx in -HALF..=HALF {
-                                let px = ((cx as i32 + dx).max(0)) as u32;
-                                let py = ((cy as i32 + dy).max(0)) as u32;
+                                let px = ((cx as i32 + dx).max(0))
+                                    .min(capture.width as i32 - 1) as u32;
+                                let py = ((cy as i32 + dy).max(0))
+                                    .min(capture.height as i32 - 1) as u32;
                                 let (r, g, b) =
                                     capture.pixel_at(px, py).unwrap_or((128, 128, 128));
                                 self.mag_buf[i] = r;
