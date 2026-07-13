@@ -109,7 +109,11 @@ impl Color {
     }
 
     /// Compute HSL from sRGB.
-    #[allow(clippy::float_cmp, clippy::manual_midpoint, clippy::trivially_copy_pass_by_ref)]
+    #[allow(
+        clippy::float_cmp,
+        clippy::manual_midpoint,
+        clippy::trivially_copy_pass_by_ref
+    )]
     fn hsl_values(&self) -> (f64, f64, f64) {
         let red = f64::from(self.r) / 255.0;
         let green = f64::from(self.g) / 255.0;
@@ -149,8 +153,6 @@ impl From<Color> for (String, String, String) {
     }
 }
 
-
-
 /// Capture all connected outputs using the XDG Desktop Portal Screenshot API.
 ///
 /// This is the same approach Flameshot uses:
@@ -164,5 +166,3 @@ impl From<Color> for (String, String, String) {
 /// is handled automatically by the portal ("Remember" checkbox on first
 /// prompt).
 pub use wayland::capture_outputs;
-
-

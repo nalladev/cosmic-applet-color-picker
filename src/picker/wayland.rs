@@ -22,8 +22,8 @@ use std::sync::OnceLock;
 use image::RgbaImage;
 use tokio::sync::oneshot;
 
-use crate::picker::capture::CaptureHelper;
 use crate::picker::CapturedOutput;
+use crate::picker::capture::CaptureHelper;
 
 /// Extract a human-readable message from a `std::thread` panic payload.
 #[allow(clippy::needless_pass_by_value)]
@@ -79,7 +79,7 @@ fn helper() -> &'static CaptureHelper {
     clippy::cast_sign_loss,
     clippy::cast_possible_truncation,
     clippy::cast_lossless,
-    clippy::items_after_statements,
+    clippy::items_after_statements
 )]
 #[allow(clippy::missing_errors_doc)]
 pub async fn capture_outputs() -> Result<Vec<CapturedOutput>, anyhow::Error> {
@@ -91,8 +91,8 @@ pub async fn capture_outputs() -> Result<Vec<CapturedOutput>, anyhow::Error> {
 
     // ── Phase 1: portal call (async D-Bus) ────────────────────────
     let response = Screenshot::request()
-        .interactive(false)  // one-shot, no region selection UI
-        .modal(false)         // not a modal dialog
+        .interactive(false) // one-shot, no region selection UI
+        .modal(false) // not a modal dialog
         .send()
         .await
         .map_err(|e| anyhow::anyhow!("Screenshot request failed: {e}"))?
@@ -171,9 +171,7 @@ pub async fn capture_outputs() -> Result<Vec<CapturedOutput>, anyhow::Error> {
             for output in &wl_outputs {
                 if let Some(info) = h.output_info(output) {
                     let (px, py) = info.location;
-                    let (lw, lh) = info
-                        .logical_size
-                        .unwrap_or((px + 1920, py + 1080)); // fallback guess
+                    let (lw, lh) = info.logical_size.unwrap_or((px + 1920, py + 1080)); // fallback guess
                     let (luw, luh) = (lw.max(0).cast_unsigned(), lh.max(0).cast_unsigned());
 
                     min_x = min_x.min(px);
@@ -186,7 +184,9 @@ pub async fn capture_outputs() -> Result<Vec<CapturedOutput>, anyhow::Error> {
                         pos_y: py,
                         log_w: luw,
                         log_h: luh,
-                        name: info.name.unwrap_or_else(|| format!("monitor-{}", geoms.len())),
+                        name: info
+                            .name
+                            .unwrap_or_else(|| format!("monitor-{}", geoms.len())),
                     });
                 }
             }
@@ -200,47 +200,45 @@ pub async fn capture_outputs() -> Result<Vec<CapturedOutput>, anyhow::Error> {
 
             eprintln!(
                 "[capture]   desktop logical {}x{} (min {}/{}) screenshot {}x{} → scale {:.3}x{:.3}",
-                total_logical_w, total_logical_h,
-                min_x, min_y,
-                full_width, full_height,
-                scale_x, scale_y,
+                total_logical_w,
+                total_logical_h,
+                min_x,
+                min_y,
+                full_width,
+                full_height,
+                scale_x,
+                scale_y,
             );
 
             let mut results: Vec<CapturedOutput> = Vec::with_capacity(geoms.len());
 
             for g in &geoms {
-                            // Crop region in screenshot pixel coordinates.
-                            let crop_x = (f64::from(g.pos_x - min_x) * scale_x).round() as u32;
-                            let crop_y = (f64::from(g.pos_y - min_y) * scale_y).round() as u32;
-                            let crop_w = (f64::from(g.log_w) * scale_x).round() as u32;
-                            let crop_h = (f64::from(g.log_h) * scale_y).round() as u32;
+                // Crop region in screenshot pixel coordinates.
+                let crop_x = (f64::from(g.pos_x - min_x) * scale_x).round() as u32;
+                let crop_y = (f64::from(g.pos_y - min_y) * scale_y).round() as u32;
+                let crop_w = (f64::from(g.log_w) * scale_x).round() as u32;
+                let crop_h = (f64::from(g.log_h) * scale_y).round() as u32;
 
                 // Clamp to image bounds.
                 let crop_w = crop_w.min(full_width.saturating_sub(crop_x));
                 let crop_h = crop_h.min(full_height.saturating_sub(crop_y));
 
                 if crop_w == 0 || crop_h == 0 {
-                    eprintln!("[capture]   SKIP {}: zero-sized crop {}x{}", g.name, crop_w, crop_h);
+                    eprintln!(
+                        "[capture]   SKIP {}: zero-sized crop {}x{}",
+                        g.name, crop_w, crop_h
+                    );
                     continue;
                 }
 
                 eprintln!(
                     "[capture]   crop {}: logical={}x{} @({},{}) → pixel={}x{} @({},{})",
-                    g.name,
-                    g.log_w, g.log_h,
-                    g.pos_x, g.pos_y,
-                    crop_w, crop_h,
-                    crop_x, crop_y,
+                    g.name, g.log_w, g.log_h, g.pos_x, g.pos_y, crop_w, crop_h, crop_x, crop_y,
                 );
 
-                let cropped: RgbaImage = image::imageops::crop_imm(
-                    &full_rgba,
-                    crop_x,
-                    crop_y,
-                    crop_w,
-                    crop_h,
-                )
-                .to_image();
+                let cropped: RgbaImage =
+                    image::imageops::crop_imm(&full_rgba, crop_x, crop_y, crop_w, crop_h)
+                        .to_image();
 
                 let handle = cosmic::widget::image::Handle::from_rgba(
                     crop_w,
@@ -261,7 +259,10 @@ pub async fn capture_outputs() -> Result<Vec<CapturedOutput>, anyhow::Error> {
                 });
             }
 
-            eprintln!("[capture]   produced {} per-output CapturedOutput(s)", results.len());
+            eprintln!(
+                "[capture]   produced {} per-output CapturedOutput(s)",
+                results.len()
+            );
             Ok(results) as Result<Vec<CapturedOutput>, anyhow::Error>
         }));
 

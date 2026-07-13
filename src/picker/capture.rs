@@ -11,14 +11,12 @@ use std::os::fd::OwnedFd;
 use std::sync::{Arc, Mutex};
 use std::thread;
 
+use cosmic::cctk::sctk;
 use cosmic::cctk::sctk::output::{OutputHandler, OutputInfo, OutputState};
 use cosmic::cctk::sctk::registry::{ProvidesRegistryState, RegistryState};
 use cosmic::cctk::sctk::shm::{Shm, ShmHandler};
-use cosmic::cctk::sctk;
 use cosmic::cctk::wayland_client::{
-    Connection, QueueHandle,
-    globals::registry_queue_init,
-    protocol::wl_output,
+    Connection, QueueHandle, globals::registry_queue_init, protocol::wl_output,
 };
 use image::RgbaImage;
 
@@ -56,8 +54,8 @@ impl CaptureHelper {
     pub fn new() -> Self {
         eprintln!("[capture] CaptureHelper::new() — Wayland connection for output discovery");
 
-        let wayland_display = std::env::var("WAYLAND_DISPLAY")
-            .unwrap_or_else(|_| "wayland-1".to_string());
+        let wayland_display =
+            std::env::var("WAYLAND_DISPLAY").unwrap_or_else(|_| "wayland-1".to_string());
         let socket_path = format!(
             "{}/{}",
             std::env::var("XDG_RUNTIME_DIR")
@@ -102,10 +100,12 @@ impl CaptureHelper {
         );
 
         // Spawn persistent dispatch thread for output tracking.
-        thread::spawn(move || loop {
-            if event_queue.blocking_dispatch(&mut data).is_err() {
-                eprintln!("[capture] CaptureHelper dispatch thread: connection lost, exiting");
-                break;
+        thread::spawn(move || {
+            loop {
+                if event_queue.blocking_dispatch(&mut data).is_err() {
+                    eprintln!("[capture] CaptureHelper dispatch thread: connection lost, exiting");
+                    break;
+                }
             }
         });
 
@@ -123,19 +123,18 @@ impl CaptureHelper {
     #[must_use]
     #[allow(clippy::missing_panics_doc)]
     pub fn output_info(&self, output: &wl_output::WlOutput) -> Option<OutputInfo> {
-        self.inner
-            .output_infos
-            .lock()
-            .unwrap()
-            .get(output)
-            .cloned()
+        self.inner.output_infos.lock().unwrap().get(output).cloned()
     }
 
     fn set_output_info(&self, output: &wl_output::WlOutput, info: Option<OutputInfo>) {
         let mut map = self.inner.output_infos.lock().unwrap();
         match info {
-            Some(i) => { map.insert(output.clone(), i); }
-            None => { map.remove(output); }
+            Some(i) => {
+                map.insert(output.clone(), i);
+            }
+            None => {
+                map.remove(output);
+            }
         }
     }
 }
@@ -212,40 +211,52 @@ pub async fn portal_prepare_all(
     helper: &CaptureHelper,
     restore_token: Option<&str>,
 ) -> Result<(Vec<(PreparedCapture, PortalOutputInfo)>, Option<String>), anyhow::Error> {
-    use ashpd::desktop::screencast::{CursorMode, Screencast, SourceType};
     use ashpd::desktop::PersistMode;
+    use ashpd::desktop::screencast::{CursorMode, Screencast, SourceType};
 
     eprintln!("[capture] portal_prepare_all: creating ScreenCast session");
 
-    let proxy = Screencast::new().await
+    let proxy = Screencast::new()
+        .await
         .map_err(|e| anyhow::anyhow!("Screencast::new failed: {e}"))?;
-    let session = proxy.create_session().await
+    let session = proxy
+        .create_session()
+        .await
         .map_err(|e| anyhow::anyhow!("create_session failed: {e}"))?;
 
     proxy
-            .select_sources(
-                &session,
-                CursorMode::Hidden,
-                SourceType::Monitor.into(),
-                true, // multiple monitors
-                restore_token, // pass restore_token here for permission persistence
-                PersistMode::ExplicitlyRevoked,
-            )
-            .await
-            .map_err(|e| anyhow::anyhow!("select_sources failed: {e}"))?;
+        .select_sources(
+            &session,
+            CursorMode::Hidden,
+            SourceType::Monitor.into(),
+            true,          // multiple monitors
+            restore_token, // pass restore_token here for permission persistence
+            PersistMode::ExplicitlyRevoked,
+        )
+        .await
+        .map_err(|e| anyhow::anyhow!("select_sources failed: {e}"))?;
 
-    let response = proxy.start(&session, None).await
-            .map_err(|e| anyhow::anyhow!("start failed: {e}"))?
-            .response()
-            .map_err(|e| anyhow::anyhow!("start response error: {e}"))?;
+    let response = proxy
+        .start(&session, None)
+        .await
+        .map_err(|e| anyhow::anyhow!("start failed: {e}"))?
+        .response()
+        .map_err(|e| anyhow::anyhow!("start response error: {e}"))?;
 
-        let restore_token = response.restore_token().map(std::string::ToString::to_string);
-                eprintln!("[capture] portal_prepare_all: got restore_token: {restore_token:?}");
+    let restore_token = response
+        .restore_token()
+        .map(std::string::ToString::to_string);
+    eprintln!("[capture] portal_prepare_all: got restore_token: {restore_token:?}");
 
-        let streams = response.streams();
-    eprintln!("[capture] portal_prepare_all: got {} stream(s)", streams.len());
+    let streams = response.streams();
+    eprintln!(
+        "[capture] portal_prepare_all: got {} stream(s)",
+        streams.len()
+    );
 
-    let pw_fd = proxy.open_pipe_wire_remote(&session).await
+    let pw_fd = proxy
+        .open_pipe_wire_remote(&session)
+        .await
         .map_err(|e| anyhow::anyhow!("open_pipe_wire_remote failed: {e}"))?;
 
     let session = Arc::new(PortalSession { pipewire_fd: pw_fd });
@@ -259,9 +270,7 @@ pub async fn portal_prepare_all(
         let stream_pos = stream.position();
         let stream_size = stream.size();
 
-        eprintln!(
-            "[capture]   stream node={node_id} pos={stream_pos:?} size={stream_size:?}"
-        );
+        eprintln!("[capture]   stream node={node_id} pos={stream_pos:?} size={stream_size:?}");
 
         // Find the matching Wayland output by position + size.
         let matched = wl_outputs.iter().find_map(|o| {
@@ -271,10 +280,10 @@ pub async fn portal_prepare_all(
             let (sw, sh) = stream_size.unwrap_or((0, 0));
 
             if ox == stream_pos.map_or(ox, |p| p.0)
-                            && oy == stream_pos.map_or(oy, |p| p.1)
-                            && lw == sw
-                            && lh == sh
-                        {
+                && oy == stream_pos.map_or(oy, |p| p.1)
+                && lw == sw
+                && lh == sh
+            {
                 Some(info)
             } else if wl_outputs.len() == 1 && lw == sw && lh == sh {
                 // Single monitor: match by size only.
@@ -286,7 +295,7 @@ pub async fn portal_prepare_all(
 
         let (sw, sh) = stream_size.unwrap_or((0, 0));
         let width = u32::try_from(sw.max(0)).unwrap_or(0);
-                let height = u32::try_from(sh.max(0)).unwrap_or(0);
+        let height = u32::try_from(sh.max(0)).unwrap_or(0);
 
         if width == 0 || height == 0 {
             eprintln!("[capture]   SKIP: zero-sized stream");
@@ -298,15 +307,19 @@ pub async fn portal_prepare_all(
                 name: info.name.clone().unwrap_or_default(),
                 pos_x: info.location.0,
                 pos_y: info.location.1,
-                logical_width: info.logical_size.map_or(width, |s| u32::try_from(s.0.max(0)).unwrap_or(0)),
-                                logical_height: info.logical_size.map_or(height, |s| u32::try_from(s.1.max(0)).unwrap_or(0)),
+                logical_width: info
+                    .logical_size
+                    .map_or(width, |s| u32::try_from(s.0.max(0)).unwrap_or(0)),
+                logical_height: info
+                    .logical_size
+                    .map_or(height, |s| u32::try_from(s.1.max(0)).unwrap_or(0)),
             }
         } else {
             eprintln!("[capture]   WARNING: no matching output for stream, using stream metadata");
             PortalOutputInfo {
                 name: format!("monitor-{}", results.len()),
                 pos_x: stream_pos.map_or(0, |p| p.0),
-                                pos_y: stream_pos.map_or(0, |p| p.1),
+                pos_y: stream_pos.map_or(0, |p| p.1),
                 logical_width: width,
                 logical_height: height,
             }
@@ -323,9 +336,12 @@ pub async fn portal_prepare_all(
         ));
     }
 
-    eprintln!("[capture] portal_prepare_all: prepared {} output(s)", results.len());
-        Ok((results, restore_token))
-    }
+    eprintln!(
+        "[capture] portal_prepare_all: prepared {} output(s)",
+        results.len()
+    );
+    Ok((results, restore_token))
+}
 
 /// Connect to `PipeWire` via the prepared fd and grab one frame per stream.
 ///
@@ -341,7 +357,10 @@ pub fn pipewire_finish_all(
         return Err(anyhow::anyhow!("No prepared captures"));
     }
 
-    eprintln!("[capture] pipewire_finish_all: connecting PipeWire for {} stream(s)", prepared.len());
+    eprintln!(
+        "[capture] pipewire_finish_all: connecting PipeWire for {} stream(s)",
+        prepared.len()
+    );
 
     // Initialize PipeWire (idempotent).
     pw::init();
@@ -352,9 +371,14 @@ pub fn pipewire_finish_all(
         .map_err(|e| anyhow::anyhow!("Context::new failed: {e}"))?;
 
     // Clone the fd for the PipeWire core connection.
-    let core_fd = prepared[0].0.session.pipewire_fd.try_clone()
+    let core_fd = prepared[0]
+        .0
+        .session
+        .pipewire_fd
+        .try_clone()
         .map_err(|e| anyhow::anyhow!("fd clone failed: {e}"))?;
-    let core = context.connect_fd(core_fd, None)
+    let core = context
+        .connect_fd(core_fd, None)
         .map_err(|e| anyhow::anyhow!("connect_fd failed: {e}"))?;
 
     let mut results = Vec::with_capacity(prepared.len());
@@ -366,20 +390,30 @@ pub fn pipewire_finish_all(
         eprintln!("[capture]   capturing stream node={node_id} {width}x{height}");
 
         if let Some(shm) = capture_one_stream(&core, &mainloop, node_id, width, height) {
-            eprintln!("[capture]   stream '{}`: captured {}x{}", info.name, shm.width, shm.height);
-            results.push((shm, PortalOutputInfo {
-                name: info.name.clone(),
-                pos_x: info.pos_x,
-                pos_y: info.pos_y,
-                logical_width: info.logical_width,
-                logical_height: info.logical_height,
-            }));
+            eprintln!(
+                "[capture]   stream '{}`: captured {}x{}",
+                info.name, shm.width, shm.height
+            );
+            results.push((
+                shm,
+                PortalOutputInfo {
+                    name: info.name.clone(),
+                    pos_x: info.pos_x,
+                    pos_y: info.pos_y,
+                    logical_width: info.logical_width,
+                    logical_height: info.logical_height,
+                },
+            ));
         } else {
             eprintln!("[capture]   stream '{}': FAILED", info.name);
         }
     }
 
-    eprintln!("[capture] pipewire_finish_all: captured {}/{} stream(s)", results.len(), prepared.len());
+    eprintln!(
+        "[capture] pipewire_finish_all: captured {}/{} stream(s)",
+        results.len(),
+        prepared.len()
+    );
     Ok(results)
 }
 
@@ -437,7 +471,10 @@ fn capture_one_stream(
                 return;
             }
 
-            let Ok((media_type, media_subtype)) = pw::spa::param::format_utils::parse_format(param) else { return };
+            let Ok((media_type, media_subtype)) = pw::spa::param::format_utils::parse_format(param)
+            else {
+                return;
+            };
 
             if media_type != pw::spa::param::format::MediaType::Video
                 || media_subtype != pw::spa::param::format::MediaSubtype::Raw
@@ -453,30 +490,30 @@ fn capture_one_stream(
                 d.format.size().height,
             );
         })
-        .process(|stream, user_data| {
-            match stream.dequeue_buffer() {
-                None => {
-                    eprintln!("[capture]     PipeWire: out of buffers");
+        .process(|stream, user_data| match stream.dequeue_buffer() {
+            None => {
+                eprintln!("[capture]     PipeWire: out of buffers");
+            }
+            Some(mut buffer) => {
+                let datas = buffer.datas_mut();
+                if datas.is_empty() {
+                    return;
                 }
-                Some(mut buffer) => {
-                    let datas = buffer.datas_mut();
-                    if datas.is_empty() {
-                        return;
-                    }
-                    let data = &mut datas[0];
-                    let chunk = data.chunk();
-                    let size = chunk.size() as usize;
+                let data = &mut datas[0];
+                let chunk = data.chunk();
+                let size = chunk.size() as usize;
 
-                    if let Some(slice) = data.data() {
-                        let mut d = user_data.lock().unwrap();
-                        let buf_size = d.format.size();
-                        d.frame_width = buf_size.width;
-                        d.frame_height = buf_size.height;
-                        d.frame_data = Some(slice[..size].to_vec());
-                        d.done = true;
-                        eprintln!("[capture]     PipeWire: got frame {} bytes, {}x{}",
-                            size, d.frame_width, d.frame_height);
-                    }
+                if let Some(slice) = data.data() {
+                    let mut d = user_data.lock().unwrap();
+                    let buf_size = d.format.size();
+                    d.frame_width = buf_size.width;
+                    d.frame_height = buf_size.height;
+                    d.frame_data = Some(slice[..size].to_vec());
+                    d.done = true;
+                    eprintln!(
+                        "[capture]     PipeWire: got frame {} bytes, {}x{}",
+                        size, d.frame_width, d.frame_height
+                    );
                 }
             }
         })
@@ -514,8 +551,14 @@ fn capture_one_stream(
             Range,
             Rectangle,
             pw::spa::utils::Rectangle { width, height },
-            pw::spa::utils::Rectangle { width: 1, height: 1 },
-            pw::spa::utils::Rectangle { width: 7680, height: 4320 }
+            pw::spa::utils::Rectangle {
+                width: 1,
+                height: 1
+            },
+            pw::spa::utils::Rectangle {
+                width: 7680,
+                height: 4320
+            }
         ),
     );
 
@@ -548,7 +591,9 @@ fn capture_one_stream(
             eprintln!("[capture]     PipeWire: timeout waiting for frame");
             break;
         }
-        mainloop.loop_().iterate(std::time::Duration::from_millis(100));
+        mainloop
+            .loop_()
+            .iterate(std::time::Duration::from_millis(100));
 
         let d = data_ref.lock().unwrap();
         if d.done {
@@ -558,8 +603,15 @@ fn capture_one_stream(
             drop(d);
 
             if let Some(pixels) = pw {
-                eprintln!("[capture]     PipeWire: captured {w}x{h} ({} bytes)", pixels.len());
-                return Some(ShmImage { pixels, width: w, height: h });
+                eprintln!(
+                    "[capture]     PipeWire: captured {w}x{h} ({} bytes)",
+                    pixels.len()
+                );
+                return Some(ShmImage {
+                    pixels,
+                    width: w,
+                    height: h,
+                });
             }
         }
     }
