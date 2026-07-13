@@ -97,4 +97,4 @@ jobs:
           shasum -a 256 * > ../SHA256SUMS
       - name: Upload Checksums
         run: |
-          gh release upload "${{ github.ref_name }}" SHA256SUMS --clobber
+          gh release upload "${{ github.ref_name }}" SHA256SUMS --clobber --repo ${{ github.repository }}
