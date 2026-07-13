@@ -91,7 +91,7 @@ struct MagnifierProgram {
 impl<Message> canvas::Program<Message, cosmic::Theme> for MagnifierProgram {
     type State = ();
 
-    #[allow(clippy::cast_precision_loss)]
+    #[allow(clippy::cast_precision_loss, clippy::similar_names)]
     fn draw(
         &self,
         _state: &(),
@@ -450,7 +450,7 @@ impl cosmic::Application for AppModel {
         Subscription::batch(subs)
     }
 
-    #[allow(clippy::too_many_lines)]
+    #[allow(clippy::too_many_lines, clippy::many_single_char_names)]
     fn update(&mut self, message: Self::Message) -> Task<cosmic::Action<Self::Message>> {
         match message {
             // ────────────────────────────────────────────────
@@ -729,6 +729,7 @@ impl cosmic::Application for AppModel {
 
                 if let Some(hover) = hover {
                     const GRID: usize = 17;
+                    #[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
                     const HALF: i32 = (GRID / 2) as i32;
                     if let Some(capture) = self
                         .picker
@@ -739,10 +740,14 @@ impl cosmic::Application for AppModel {
                         let mut i = 0usize;
                         for dy in -HALF..=HALF {
                             for dx in -HALF..=HALF {
-                                let px =
-                                    ((cx as i32 + dx).max(0)).min(capture.width as i32 - 1) as u32;
-                                let py =
-                                    ((cy as i32 + dy).max(0)).min(capture.height as i32 - 1) as u32;
+                                let px = (cx.cast_signed() + dx)
+                                    .max(0)
+                                    .min(capture.width.cast_signed() - 1)
+                                    .cast_unsigned();
+                                let py = (cy.cast_signed() + dy)
+                                    .max(0)
+                                    .min(capture.height.cast_signed() - 1)
+                                    .cast_unsigned();
                                 let (r, g, b) = capture.pixel_at(px, py).unwrap_or((128, 128, 128));
                                 self.mag_buf[i] = r;
                                 self.mag_buf[i + 1] = g;
