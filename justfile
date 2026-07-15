@@ -110,9 +110,18 @@ vendor-flatpak:
         echo "$OUT is up to date"
     fi
 
-# Build flatpak (auto-regenerates cargo sources if needed)
-# Build flatpak from local source and install (auto-regenerates cargo sources if Cargo.lock changed)
+# Build flatpak only (auto-regenerates cargo sources if Cargo.lock changed)
 flatpak-build: vendor-flatpak
+    flatpak-builder --user --force-clean build-dir \
+        flatpak/io.github.nalladev.CosmicExtAppletEyedropper.json
+
+# Install previously built flatpak
+flatpak-install:
+    flatpak-builder --user --install-only build-dir \
+        flatpak/io.github.nalladev.CosmicExtAppletEyedropper.json
+
+# Build and install flatpak (auto-regenerates cargo sources if Cargo.lock changed)
+flatpak-build-install: vendor-flatpak
     flatpak-builder --user --install --force-clean build-dir \
         flatpak/io.github.nalladev.CosmicExtAppletEyedropper.json
 
