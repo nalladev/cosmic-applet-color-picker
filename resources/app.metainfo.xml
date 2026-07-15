@@ -4,6 +4,7 @@
   <metadata_license>CC0-1.0</metadata_license>
   <project_license>MPL-2.0</project_license>
   <name>Eyedropper</name>
+  <developer_name>Joel</developer_name>
   <summary>Eyedropper applet for cosmic desktop. Pick colours from the screen.</summary>
   <description>
     <p>
@@ -14,7 +15,19 @@
     </p>
   </description>
   <icon type="stock">color-select-symbolic</icon>
+  <url type="homepage">https://github.com/nalladev/cosmic-ext-applet-eyedropper</url>
+  <url type="bugtracker">https://github.com/nalladev/cosmic-ext-applet-eyedropper/issues</url>
   <url type="vcs-browser">https://github.com/nalladev/cosmic-ext-applet-eyedropper</url>
+  <screenshots>
+    <screenshot type="default">
+      <caption>Eyedropper popup showing color details in HEX, RGB, and HSL</caption>
+      <image>https://raw.githubusercontent.com/nalladev/cosmic-ext-applet-eyedropper/main/resources/screenshot-1.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>Color picker overlay for selecting colors from anywhere on screen</caption>
+      <image>https://raw.githubusercontent.com/nalladev/cosmic-ext-applet-eyedropper/main/resources/screenshot-2.png</image>
+    </screenshot>
+  </screenshots>
   <launchable type="desktop-id">io.github.nalladev.CosmicExtAppletEyedropper.desktop</launchable>
   <provides>
     <id>io.github.nalladev.CosmicExtAppletEyedropper</id>
