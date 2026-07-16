@@ -404,12 +404,13 @@ impl cosmic::Application for AppModel {
 
     /// Draw the applet button in the panel.
     fn view(&self) -> Element<'_, Self::Message> {
-        self.core
-            .applet
-            .icon_button("color-select-symbolic")
-            .on_press(Message::TogglePopup)
-            .into()
-    }
+            eprintln!("[view] re-render");
+            self.core
+                .applet
+                .icon_button("color-select-symbolic")
+                .on_press(Message::TogglePopup)
+                .into()
+        }
 
     /// Draw a window – either the popup or a picker overlay.
     fn view_window(&self, id: Id) -> Element<'_, Self::Message> {
@@ -891,6 +892,15 @@ impl cosmic::Application for AppModel {
             }
         }
 
+        Task::none()
+    }
+
+    fn system_theme_update(
+        &mut self,
+        _keys: &[&'static str],
+        new_theme: &cosmic::cosmic_theme::Theme,
+    ) -> Task<cosmic::Action<Self::Message>> {
+        eprintln!("[theme] system_theme_update called — is_dark={}", new_theme.is_dark);
         Task::none()
     }
 
